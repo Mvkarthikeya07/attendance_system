@@ -1,4 +1,6 @@
 import os
+from dotenv import load_dotenv
+import mysql.connector
 
 from flask import Flask, render_template, request, redirect, session, jsonify, Response
 from mysql_db import get_connection
@@ -8,7 +10,6 @@ import base64
 import numpy as np
 import cv2
 from datetime import datetime
-from dotenv import load_dotenv
 
 load_dotenv()
 

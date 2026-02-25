@@ -1,3 +1,9 @@
+import os
+from dotenv import load_dotenv
+import mysql.connector
+
+load_dotenv()
+
 def get_connection():
     required = ["MYSQL_HOST", "MYSQL_USER", "MYSQL_PASSWORD", "MYSQL_DATABASE"]
     for var in required:
