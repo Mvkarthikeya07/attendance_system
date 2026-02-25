@@ -1,0 +1,8 @@
+flask
+gunicorn
+opencv-contrib-python-headless
+numpy
+ultralytics
+mysql-connector-python
+twilio
+python-dotenv

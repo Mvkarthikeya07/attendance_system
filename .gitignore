@@ -1,0 +1,30 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# Environment variables
+.env
+
+# VS Code
+.vscode/
+
+# Dataset folder (VERY IMPORTANT)
+dataset/
+
+# Trained weights if large
+*.pt
+*.pth
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db

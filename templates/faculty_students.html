@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Registered Students – Attendance System</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f2f5; min-height: 100vh; }
+
+    /* ── TOP NAV ── */
+    nav {
+      background: #4f46e5;
+      color: #fff;
+      padding: 14px 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    nav .brand { font-size: 1.15rem; font-weight: 700; letter-spacing: .4px; }
+    nav .nav-links a {
+      color: #c7d2fe;
+      text-decoration: none;
+      margin-left: 18px;
+      font-size: .9rem;
+      transition: color .2s;
+    }
+    nav .nav-links a:hover { color: #fff; }
+
+    /* ── WRAPPER ── */
+    .wrapper { max-width: 1100px; margin: 36px auto; padding: 0 20px; }
+
+    /* ── HEADER ROW ── */
+    .header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 22px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .header-row h1 { font-size: 1.4rem; color: #1e1b4b; }
+    .btn-primary {
+      background: #4f46e5;
+      color: #fff;
+      border: none;
+      padding: 9px 20px;
+      border-radius: 8px;
+      font-size: .9rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background .2s;
+    }
+    .btn-primary:hover { background: #4338ca; }
+
+    /* ── SEARCH ── */
+    .search-bar {
+      margin-bottom: 16px;
+    }
+    .search-bar input {
+      width: 100%;
+      padding: 10px 16px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: .95rem;
+      outline: none;
+      transition: border-color .2s;
+    }
+    .search-bar input:focus { border-color: #4f46e5; }
+
+    /* ── TABLE CARD ── */
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 10px rgba(0,0,0,.07);
+      overflow: hidden;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    thead th {
+      background: #4f46e5;
+      color: #fff;
+      padding: 13px 16px;
+      text-align: left;
+      font-size: .85rem;
+      font-weight: 600;
+      letter-spacing: .4px;
+      text-transform: uppercase;
+    }
+    tbody tr { border-bottom: 1px solid #f1f1f4; transition: background .15s; }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: #f8f7ff; }
+    td { padding: 13px 16px; font-size: .9rem; color: #374151; vertical-align: middle; }
+    td .badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: .78rem;
+      font-weight: 600;
+      background: #e0e7ff;
+      color: #4338ca;
+    }
+
+    /* ── ACTION BUTTONS ── */
+    .actions { display: flex; gap: 8px; align-items: center; }
+    .btn-edit {
+      background: #e0e7ff;
+      color: #4338ca;
+      border: none;
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: .82rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background .2s, color .2s;
+    }
+    .btn-edit:hover { background: #4f46e5; color: #fff; }
+    .btn-delete {
+      background: #fee2e2;
+      color: #dc2626;
+      border: none;
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: .82rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .2s, color .2s;
+    }
+    .btn-delete:hover { background: #dc2626; color: #fff; }
+
+    /* ── EMPTY STATE ── */
+    .empty { text-align: center; padding: 52px 20px; color: #9ca3af; }
+    .empty .icon { font-size: 2.8rem; margin-bottom: 10px; }
+
+    /* ── FOOTER COUNT ── */
+    .footer-count {
+      text-align: right;
+      padding: 10px 16px;
+      font-size: .82rem;
+      color: #6b7280;
+      border-top: 1px solid #f1f1f4;
+      background: #fafafa;
+    }
+
+    /* ── CONFIRM MODAL ── */
+    .modal-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.45);
+      z-index: 999;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.show { display: flex; }
+    .modal {
+      background: #fff;
+      border-radius: 14px;
+      padding: 32px 28px;
+      max-width: 380px;
+      width: 90%;
+      box-shadow: 0 8px 32px rgba(0,0,0,.18);
+      text-align: center;
+    }
+    .modal .modal-icon { font-size: 2.4rem; margin-bottom: 10px; }
+    .modal h3 { font-size: 1.1rem; color: #1e1b4b; margin-bottom: 8px; }
+    .modal p { font-size: .9rem; color: #6b7280; margin-bottom: 22px; }
+    .modal-actions { display: flex; gap: 10px; justify-content: center; }
+    .btn-cancel {
+      background: #f3f4f6;
+      color: #374151;
+      border: none;
+      padding: 9px 22px;
+      border-radius: 8px;
+      font-size: .9rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-confirm-delete {
+      background: #dc2626;
+      color: #fff;
+      border: none;
+      padding: 9px 22px;
+      border-radius: 8px;
+      font-size: .9rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-confirm-delete:hover { background: #b91c1c; }
+
+    @media (max-width: 680px) {
+      thead th:nth-child(4),
+      td:nth-child(4),
+      thead th:nth-child(5),
+      td:nth-child(5) { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <span class="brand">🎓 Attendance System</span>
+  <div class="nav-links">
+    <a href="/faculty/schedule">Schedule</a>
+    <a href="/faculty/students">Students</a>
+    <a href="/faculty/register-student">+ Register</a>
+    <a href="/dashboard">Dashboard</a>
+    <a href="/faculty/logout">Logout</a>
+  </div>
+</nav>
+
+<!-- MAIN -->
+<div class="wrapper">
+  <div class="header-row">
+    <h1>👥 Registered Students
+      <span style="font-size:.9rem;font-weight:400;color:#6b7280;margin-left:8px">
+        — {{ faculty.name }}
+      </span>
+    </h1>
+    <a href="/faculty/register-student" class="btn-primary">+ Register New Student</a>
+  </div>
+
+  <!-- SEARCH -->
+  <div class="search-bar">
+    <input type="text" id="searchInput" placeholder="🔍  Search by name, reg number, email or phone…" oninput="filterTable()">
+  </div>
+
+  <!-- TABLE -->
+  <div class="card">
+    {% if students %}
+    <table id="studentTable">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Name</th>
+          <th>Reg Number</th>
+          <th>Email</th>
+          <th>Phone</th>
+          <th>Registered</th>
+          <th style="text-align:center">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in students %}
+        {# s = (id, name, reg_number, college_email, phone, folder_name, created_at) #}
+        <tr>
+          <td style="color:#9ca3af;font-size:.82rem">{{ loop.index }}</td>
+          <td><strong>{{ s[1] }}</strong></td>
+          <td><span class="badge">{{ s[2] }}</span></td>
+          <td>{{ s[3] }}</td>
+          <td>{{ s[4] }}</td>
+          <td style="color:#9ca3af;font-size:.82rem">{{ s[6] if s[6] else '—' }}</td>
+          <td>
+            <div class="actions" style="justify-content:center">
+              <!-- EDIT -->
+              <a href="/faculty/edit-student/{{ s[0] }}" class="btn-edit">✏️ Edit</a>
+              <!-- DELETE -->
+              <button class="btn-delete"
+                      onclick="confirmDelete({{ s[0] }}, '{{ s[1]|e }}')">
+                🗑️ Delete
+              </button>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="footer-count" id="countLabel">
+      Showing {{ students|length }} student{{ 's' if students|length != 1 else '' }}
+    </div>
+    {% else %}
+    <div class="empty">
+      <div class="icon">📭</div>
+      <p>No students registered yet.</p>
+      <a href="/faculty/register-student" class="btn-primary" style="margin-top:14px;display:inline-block">
+        Register First Student
+      </a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- DELETE CONFIRM MODAL -->
+<div class="modal-overlay" id="deleteModal">
+  <div class="modal">
+    <div class="modal-icon">⚠️</div>
+    <h3>Delete Student?</h3>
+    <p id="modalMsg">This will permanently remove the student record.</p>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+      <form id="deleteForm" method="POST" style="display:inline">
+        <button type="submit" class="btn-confirm-delete">Yes, Delete</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ── DELETE MODAL ──
+  function confirmDelete(id, name) {
+    document.getElementById("modalMsg").textContent =
+      `This will permanently remove "${name}" from the system.`;
+    document.getElementById("deleteForm").action =
+      "/faculty/delete-student/" + id;
+    document.getElementById("deleteModal").classList.add("show");
+  }
+  function closeModal() {
+    document.getElementById("deleteModal").classList.remove("show");
+  }
+  // Close on backdrop click
+  document.getElementById("deleteModal").addEventListener("click", function(e) {
+    if (e.target === this) closeModal();
+  });
+
+  // ── LIVE SEARCH ──
+  function filterTable() {
+    const q = document.getElementById("searchInput").value.toLowerCase();
+    const rows = document.querySelectorAll("#studentTable tbody tr");
+    let visible = 0;
+    rows.forEach(row => {
+      const text = row.textContent.toLowerCase();
+      const show = text.includes(q);
+      row.style.display = show ? "" : "none";
+      if (show) visible++;
+    });
+    document.getElementById("countLabel").textContent =
+      `Showing ${visible} student${visible !== 1 ? "s" : ""}`;
+  }
+</script>
+
+</body>
+</html>
+
+<style>
+@media (max-width: 600px) {
+  nav { padding: 12px 14px; }
+  nav .brand { font-size: 1rem; }
+  nav .nav-links a { margin-left: 10px; font-size: .8rem; }
+  .wrapper { margin: 16px auto; padding: 0 12px; }
+  .header-row h1 { font-size: 1.1rem; }
+  .btn-primary { padding: 8px 14px; font-size: .82rem; }
+  .search-bar input { padding: 9px 12px; font-size: .88rem; }
+  table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; font-size: .8rem; }
+  thead th { padding: 10px 10px; font-size: .75rem; }
+  td { padding: 10px; }
+  .btn-edit, .btn-delete { padding: 5px 10px; font-size: .75rem; }
+  .modal { padding: 24px 18px; }
+  .modal h3 { font-size: 1rem; }
+  .modal p { font-size: .83rem; }
+  .btn-cancel, .btn-confirm-delete { padding: 8px 16px; font-size: .85rem; }
+}
+</style>
