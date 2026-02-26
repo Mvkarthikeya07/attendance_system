@@ -5,9 +5,13 @@ import pickle
 from mysql_db import get_connection
 import threading
 import numpy as np
+import requests as req
 from datetime import date, datetime
 from collections import Counter, defaultdict
 from ultralytics import YOLO
+
+# Ensure dataset directory exists (it's gitignored, won't exist on fresh deploy)
+os.makedirs("dataset", exist_ok=True)
 
 # =========================================================
 # FRONTEND FRAME BUFFER (REPLACES VideoCapture)
@@ -40,6 +44,17 @@ if os.path.exists("trainer.yml") and os.path.exists("labels.pickle"):
         label_map = pickle.load(f)
 
 MODEL_PATH = os.environ.get("MODEL_PATH", "yolov8s-face-lindevs.pt")
+MODEL_URL = "https://github.com/lindevs/yolov8-face/releases/download/v1.0.0/yolov8s-face-lindevs.pt"
+
+if not os.path.isfile(MODEL_PATH):
+    print(f"Downloading YOLO model from {MODEL_URL}...")
+    response = req.get(MODEL_URL, stream=True)
+    response.raise_for_status()
+    with open(MODEL_PATH, "wb") as f:
+        for chunk in response.iter_content(chunk_size=8192):
+            f.write(chunk)
+    print("Model downloaded successfully.")
+
 yolo_model = YOLO(MODEL_PATH)
 
 
@@ -202,6 +217,7 @@ def gen_frames():
     while True:
 
         if latest_frame is None:
+            time.sleep(0.1)
             continue
 
         frame = latest_frame.copy()

@@ -1,6 +1,5 @@
 import os
 from dotenv import load_dotenv
-import mysql.connector
 
 from flask import Flask, render_template, request, redirect, session, jsonify, Response
 from mysql_db import get_connection
