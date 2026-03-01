@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Attendance Records{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="page-header"><h1>📊 Attendance Records</h1></div>
+
+  <div class="card">
+    <div class="flex-between mb-2" style="flex-wrap:wrap;gap:12px">
+      <h2 style="margin:0">Attendance Records</h2>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <a href="/download/attendance" class="btn btn-sm" style="background:#28a745;color:#fff">📥 Download CSV</a>
+        <form method="POST" action="/delete/all" style="display:inline;margin:0"
+              onsubmit="return confirm('⚠️ This will delete ALL records. Continue?')">
+          <button type="submit" class="btn btn-sm" style="background:#dc3545;color:#fff">🗑️ Delete All</button>
+        </form>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr><th>Name</th><th>Date</th><th>Time</th><th>Status</th><th>Late Min</th><th>Actions</th></tr>
+      </thead>
+      <tbody>
+        {% for r in records %}
+        <tr>
+          <td>{{ r[0] }}</td>
+          <td>{{ r[1] }}</td>
+          <td>{{ r[2] }}</td>
+          <td><span class="badge badge-{{ r[3]|lower }}">{{ r[3] }}</span></td>
+          <td>{{ r[5] if r[5] > 0 else '-' }}</td>
+          <td>
+            <a href="/edit/{{ r[4] }}" class="btn btn-sm">Edit</a>
+            <form method="POST" action="/delete/{{ r[4] }}" style="display:inline">
+              <button type="submit" class="btn-outline-danger"
+                      onclick="return confirm('Delete this record?')">Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <a href="/menu" class="back-link">← Back to Menu</a>
+  </div>
+</div>
+{% endblock %}

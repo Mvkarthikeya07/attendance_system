@@ -1,30 +1,35 @@
-# Python cache
+# Python
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*.egg-info/
+dist/
+build/
 
 # Virtual environment
 venv/
-env/
 .venv/
+env/
 
-# Environment variables
+# Environment & secrets
 .env
 
-# VS Code
+# IDE
 .vscode/
+.idea/
+*.swp
 
-# Dataset folder (VERY IMPORTANT)
+# OS
+.DS_Store
+Thumbs.db
+
+# Dataset images (user data)
 dataset/
 
-# Trained weights if large
+# Model files (generated)
+trainer.yml
+labels.pickle
 *.pt
 *.pth
 
 # Logs
 *.log
-
-# OS files
-.DS_Store
-Thumbs.db

@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Camera Dashboard{% endblock %}
+
+{% block extra_css %}
+<style>
+  .camera-box { border-radius: 15px; overflow: hidden; background: #ddd; }
+  .camera-box img { width: 100%; border-radius: 15px; }
+  .cam-buttons { margin-top: 25px; display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; }
+  @media (max-width: 480px) {
+    .cam-buttons button { flex: 1; min-width: 120px; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-md" style="margin-top:40px">
+  <div class="card" style="text-align:center">
+    <h2>Camera Dashboard — Attendance</h2>
+
+    <div class="camera-box">
+      <img id="videoFeed" src="/video_feed" alt="Camera Feed">
+    </div>
+
+    {% if request.args.get('mode') != 'register' %}
+    <div class="cam-buttons">
+      <button class="btn btn-green" onclick="startAttendance()">Take Attendance</button>
+      <button class="btn btn-red" onclick="endAttendance()">End Attendance</button>
+    </div>
+    {% endif %}
+
+    {% if request.args.get('mode') == 'register' %}
+    <div style="margin-top:30px">
+      <h3 style="margin-bottom:10px">Enter Student Name</h3>
+      <input type="text" id="studentName" placeholder="Enter student name"
+             style="padding:12px;width:60%;border-radius:8px;border:1px solid #ccc;font-size:16px">
+      <br>
+      <button onclick="registerFace()" class="btn btn-success" style="margin-top:15px">📷 Register Face</button>
+      <p id="registerStatus" style="margin-top:12px;color:green;font-weight:bold"></p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* Hidden front-camera → send frames to server */
+const video = document.createElement("video");
+video.autoplay = true; video.playsInline = true; video.style.display = "none";
+const canvas = document.createElement("canvas");
+const ctx = canvas.getContext("2d");
+
+navigator.mediaDevices.getUserMedia({ video: true })
+.then(stream => {
+  video.srcObject = stream;
+  setInterval(() => {
+    if (!video.videoWidth) return;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0);
+    fetch("/upload_frame", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image: canvas.toDataURL("image/jpeg", 0.6) })
+    });
+  }, 80);
+}).catch(err => console.error("Camera error:", err));
+
+/* Register face */
+async function registerFace() {
+  const name = document.getElementById("studentName")?.value.trim();
+  if (!name) { alert("Please enter a student name."); return; }
+  const fd = new FormData(); fd.append("name", name);
+  await fetch("/register", { method: "POST", body: fd });
+  const s = document.getElementById("registerStatus");
+  if (s) s.innerText = "Capturing " + name + "… Hold still and look at the camera!";
+}
+
+/* Auto-fill name from query param */
+const prefilled = new URLSearchParams(location.search).get("name");
+if (prefilled) { const el = document.getElementById("studentName"); if (el) el.value = prefilled; }
+
+function startAttendance() {
+  fetch("/start_attendance").then(() => {
+    document.querySelector(".btn-green").innerText = "Attendance Running...";
+    document.querySelector(".btn-green").disabled = true;
+  });
+}
+function endAttendance() {
+  fetch("/stop_attendance").then(() => {
+    const btn = document.querySelector(".btn-green");
+    if (btn) { btn.innerText = "Take Attendance"; btn.disabled = false; }
+    alert("Attendance ended. Absent students have been marked.");
+  });
+}
+</script>
+{% endblock %}

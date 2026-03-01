@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Schedule Attendance{% endblock %}
+
+{% block extra_css %}
+<style>
+  body { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="top-nav">
+  <h1>👨‍🏫 Faculty Dashboard</h1>
+  <form method="POST" action="/faculty/logout" style="display:inline">
+    <button type="submit" class="logout-btn">Logout</button>
+  </form>
+</div>
+
+<div class="container-md" style="margin-top:40px">
+  <div class="card">
+    <h2>📅 Schedule Attendance Session</h2>
+    {% if message %}<div class="alert alert-success">{{ message }}</div>{% endif %}
+    {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
+
+    <form method="POST">
+      <div class="form-group"><label>Start Time</label><input type="time" name="start_time" required></div>
+      <div class="form-group"><label>End Time (Normal Attendance Deadline)</label><input type="time" name="end_time" required></div>
+      <button type="submit" class="btn btn-block">Create Session &amp; Notify Students</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>🔗 Quick Links</h2>
+    <a href="/faculty/register-student" class="quick-link">Register Student</a>
+    <a href="/faculty/students" class="quick-link">View Students</a>
+    <a href="/dashboard" class="quick-link">Camera Dashboard</a>
+    <a href="/records" class="quick-link">View Records</a>
+  </div>
+</div>
+{% endblock %}

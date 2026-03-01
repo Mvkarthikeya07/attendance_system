@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}Registered Students{% endblock %}
+
+{% block extra_css %}
+<style>
+  nav { background:#4f46e5;color:#fff;padding:14px 28px;display:flex;align-items:center;justify-content:space-between }
+  nav .brand { font-size:1.15rem;font-weight:700 }
+  nav .nav-links a { color:#c7d2fe;text-decoration:none;margin-left:18px;font-size:.9rem }
+  nav .nav-links a:hover { color:#fff }
+  .wrapper { max-width:1100px;margin:36px auto;padding:0 20px }
+  .header-row { display:flex;align-items:center;justify-content:space-between;margin-bottom:22px;flex-wrap:wrap;gap:12px }
+  .header-row h1 { font-size:1.4rem;color:#1e1b4b }
+  .search-bar { margin-bottom:16px }
+  .search-bar input { width:100%;padding:10px 16px;border:1px solid #d1d5db;border-radius:8px;font-size:.95rem;outline:none }
+  .search-bar input:focus { border-color:#4f46e5 }
+  thead th { background:#4f46e5;color:#fff;padding:13px 16px;text-align:left;font-size:.85rem;font-weight:600;text-transform:uppercase }
+  .tbl-badge { display:inline-block;padding:3px 10px;border-radius:20px;font-size:.78rem;font-weight:600;background:#e0e7ff;color:#4338ca }
+  .actions { display:flex;gap:8px;align-items:center }
+  .btn-edit { background:#e0e7ff;color:#4338ca;border:none;padding:6px 14px;border-radius:6px;font-size:.82rem;font-weight:600;cursor:pointer;text-decoration:none }
+  .btn-edit:hover { background:#4f46e5;color:#fff }
+  .btn-del { background:#fee2e2;color:#dc2626;border:none;padding:6px 14px;border-radius:6px;font-size:.82rem;font-weight:600;cursor:pointer }
+  .btn-del:hover { background:#dc2626;color:#fff }
+  .empty { text-align:center;padding:52px 20px;color:#9ca3af }
+  .footer-count { text-align:right;padding:10px 16px;font-size:.82rem;color:#6b7280;border-top:1px solid #f1f1f4;background:#fafafa }
+  .modal-overlay { display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:999;align-items:center;justify-content:center }
+  .modal-overlay.show { display:flex }
+  .modal { background:#fff;border-radius:14px;padding:32px 28px;max-width:380px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.18);text-align:center }
+  .modal h3 { margin-bottom:8px } .modal p { color:#6b7280;margin-bottom:22px }
+  .modal-actions { display:flex;gap:10px;justify-content:center }
+  .btn-cancel { background:#f3f4f6;color:#374151;border:none;padding:9px 22px;border-radius:8px;font-weight:600;cursor:pointer }
+  .btn-confirm-delete { background:#dc2626;color:#fff;border:none;padding:9px 22px;border-radius:8px;font-weight:600;cursor:pointer }
+  @media(max-width:600px){ nav{padding:12px 14px} .wrapper{margin:16px auto;padding:0 12px} table{display:block;overflow-x:auto} }
+</style>
+{% endblock %}
+
+{% block content %}
+<nav>
+  <span class="brand">🎓 Attendance System</span>
+  <div class="nav-links">
+    <a href="/faculty/schedule">Schedule</a>
+    <a href="/faculty/students">Students</a>
+    <a href="/faculty/register-student">+ Register</a>
+    <a href="/dashboard">Dashboard</a>
+    <a href="/faculty/logout">Logout</a>
+  </div>
+</nav>
+
+<div class="wrapper">
+  <div class="header-row">
+    <h1>👥 Registered Students
+      <span style="font-size:.9rem;font-weight:400;color:#6b7280;margin-left:8px">— {{ faculty.name }}</span>
+    </h1>
+    <a href="/faculty/register-student" class="btn btn-sm">+ Register New Student</a>
+  </div>
+
+  <div class="search-bar">
+    <input type="text" id="searchInput" placeholder="🔍  Search by name, reg number, email or phone…" oninput="filterTable()">
+  </div>
+
+  <div class="card" style="padding:0;overflow:hidden">
+    {% if students %}
+    <table id="studentTable">
+      <thead><tr><th>#</th><th>Name</th><th>Reg Number</th><th>Email</th><th>Phone</th><th>Registered</th><th style="text-align:center">Actions</th></tr></thead>
+      <tbody>
+        {% for s in students %}
+        <tr>
+          <td style="color:#9ca3af;font-size:.82rem">{{ loop.index }}</td>
+          <td><strong>{{ s[1] }}</strong></td>
+          <td><span class="tbl-badge">{{ s[2] }}</span></td>
+          <td>{{ s[3] }}</td>
+          <td>{{ s[4] }}</td>
+          <td style="color:#9ca3af;font-size:.82rem">{{ s[6] if s[6] else '—' }}</td>
+          <td>
+            <div class="actions" style="justify-content:center">
+              <a href="/faculty/edit-student/{{ s[0] }}" class="btn-edit">✏️ Edit</a>
+              <button class="btn-del" data-id="{{ s[0] }}" data-name="{{ s[1] }}" onclick="confirmDelete(this.dataset.id, this.dataset.name)">🗑️ Delete</button>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="footer-count" id="countLabel">Showing {{ students|length }} student{{ 's' if students|length != 1 else '' }}</div>
+    {% else %}
+    <div class="empty">
+      <div style="font-size:2.8rem;margin-bottom:10px">📭</div>
+      <p>No students registered yet.</p>
+      <a href="/faculty/register-student" class="btn btn-sm" style="margin-top:14px;display:inline-block">Register First Student</a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Delete confirm modal -->
+<div class="modal-overlay" id="deleteModal">
+  <div class="modal">
+    <div style="font-size:2.4rem;margin-bottom:10px">⚠️</div>
+    <h3>Delete Student?</h3>
+    <p id="modalMsg">This will permanently remove the student record.</p>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+      <form id="deleteForm" method="POST" style="display:inline"><button type="submit" class="btn-confirm-delete">Yes, Delete</button></form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function confirmDelete(id, name){
+  document.getElementById("modalMsg").textContent = `This will permanently remove "${name}" from the system.`;
+  document.getElementById("deleteForm").action = "/faculty/delete-student/" + id;
+  document.getElementById("deleteModal").classList.add("show");
+}
+function closeModal(){ document.getElementById("deleteModal").classList.remove("show"); }
+document.getElementById("deleteModal").addEventListener("click", function(e){ if(e.target===this) closeModal(); });
+
+function filterTable(){
+  const q = document.getElementById("searchInput").value.toLowerCase();
+  const rows = document.querySelectorAll("#studentTable tbody tr");
+  let visible = 0;
+  rows.forEach(row => { const show = row.textContent.toLowerCase().includes(q); row.style.display = show ? "" : "none"; if(show) visible++; });
+  const countLabel = document.getElementById("countLabel");
+  if(countLabel) countLabel.textContent = `Showing ${visible} student${visible!==1?'s':''}`;
+}
+</script>
+{% endblock %}

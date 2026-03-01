@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Student Login{% endblock %}
+{% block body_class %}auth-page{% endblock %}
+
+{% block content %}
+<div class="auth-card">
+
+  <!-- LOGIN -->
+  <div id="login-section">
+    <h1>🎓 Student Login</h1>
+    <p style="text-align:center;color:#666;margin-bottom:30px;font-size:14px">Access your attendance portal</p>
+
+    {% if error %}<div class="alert alert-error" style="text-align:center">{{ error }}</div>{% endif %}
+    {% if success %}<div class="alert alert-success" style="text-align:center">{{ success }}</div>{% endif %}
+
+    <form method="POST" action="/student/login">
+      <div class="form-group"><label>College Email</label><input type="email" name="email" placeholder="your.name@college.edu" required></div>
+      <div class="form-group"><label>Password</label><input type="password" name="password" placeholder="Enter your password" required></div>
+      <div class="forgot-link"><a href="javascript:void(0)" onclick="showForgot()">Forgot Password?</a></div>
+      <button type="submit" class="btn btn-block">Login</button>
+    </form>
+
+    <div style="text-align:center;margin:20px 0;color:#999;font-size:14px">────────</div>
+    <div class="text-link"><a href="/student/register">Don't have an account? Register here</a></div>
+  </div>
+
+  <!-- RESET PASSWORD -->
+  <div id="forgot-section" class="forgot-panel">
+    <h2>🔒 Reset Password</h2>
+    <p>Enter your email and new password</p>
+    {% if reset_error %}<div class="alert alert-error" style="text-align:center">{{ reset_error }}</div>{% endif %}
+    {% if reset_success %}<div class="alert alert-success" style="text-align:center">{{ reset_success }}</div>{% endif %}
+    <form method="POST" action="/student/reset-password">
+      <div class="form-group"><label>College Email</label><input type="email" name="reset_email" required placeholder="your.name@college.edu"></div>
+      <div class="form-group"><label>New Password</label><input type="password" name="new_password" required></div>
+      <div class="form-group"><label>Confirm Password</label><input type="password" name="confirm_password" required></div>
+      <button type="submit" class="btn btn-block">Reset Password</button>
+    </form>
+    <div class="text-link"><a href="javascript:void(0)" onclick="showLogin()">← Back to Login</a></div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if reset_error or reset_success %}<input type="hidden" id="showResetPanel" value="1">{% endif %}
+<script>
+function showForgot(){ document.getElementById('login-section').style.display='none'; document.getElementById('forgot-section').style.display='block'; }
+function showLogin(){ document.getElementById('forgot-section').style.display='none'; document.getElementById('login-section').style.display='block'; }
+if(document.getElementById('showResetPanel')) showForgot();
+</script>
+{% endblock %}

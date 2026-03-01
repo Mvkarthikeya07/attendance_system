@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Edit Student{% endblock %}
+
+{% block extra_css %}
+<style>
+  nav { background:#4f46e5;color:#fff;padding:14px 28px;display:flex;align-items:center;justify-content:space-between }
+  nav .brand { font-size:1.15rem;font-weight:700 }
+  nav a { color:#c7d2fe;text-decoration:none;margin-left:18px;font-size:.9rem }
+  nav a:hover { color:#fff }
+  .btn-row { display:flex;gap:10px;margin-top:24px }
+  .btn-save { flex:1;background:#4f46e5;color:#fff;border:none;padding:11px;border-radius:8px;font-size:.95rem;font-weight:700;cursor:pointer }
+  .btn-save:hover { background:#4338ca }
+  .btn-cancel-link { flex:1;text-align:center;background:#f3f4f6;color:#374151;border:none;padding:11px;border-radius:8px;font-size:.95rem;font-weight:600;text-decoration:none }
+  .btn-cancel-link:hover { background:#e5e7eb }
+</style>
+{% endblock %}
+
+{% block content %}
+<nav>
+  <span class="brand">🎓 Attendance System</span>
+  <div>
+    <a href="/faculty/schedule">Schedule</a>
+    <a href="/faculty/students">Students</a>
+    <a href="/faculty/logout">Logout</a>
+  </div>
+</nav>
+
+<div class="container-sm" style="margin-top:48px">
+  <a href="/faculty/students" class="back-link" style="margin-bottom:20px;display:inline-block">← Back to Students</a>
+
+  <div class="card">
+    <h2>✏️ Edit Student</h2>
+    <p style="color:#6b7280;font-size:.88rem;margin-bottom:28px">Update the details for this student record.</p>
+
+    {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
+
+    <form method="POST">
+      <div class="form-group"><label>Full Name</label><input type="text" name="name" value="{{ student[1] }}" required></div>
+      <div class="form-group"><label>Registration Number</label><input type="text" name="reg_number" value="{{ student[2] }}" required></div>
+      <div class="form-group"><label>College Email</label><input type="email" name="college_email" value="{{ student[3] }}" required></div>
+      <div class="form-group"><label>Phone Number</label><input type="tel" name="phone" value="{{ student[4] }}" required></div>
+      <div class="btn-row">
+        <a href="/faculty/students" class="btn-cancel-link">Cancel</a>
+        <button type="submit" class="btn-save">Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

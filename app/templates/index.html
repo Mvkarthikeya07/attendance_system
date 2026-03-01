@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Welcome — Attendance System{% endblock %}
+{% block body_class %}auth-page{% endblock %}
+
+{% block content %}
+<div class="auth-card" style="max-width:500px;text-align:center">
+  <h1 style="color:#667eea;font-size:32px;margin-bottom:8px">📚 Attendance System</h1>
+  <p style="color:#666;font-size:16px;margin-bottom:30px">Face Recognition Based Attendance</p>
+
+  <div class="portal-grid">
+    <a href="/faculty/login" class="portal-card">
+      <div class="icon">👨‍🏫</div>
+      <h3>Faculty Portal</h3>
+      <p>Manage attendance sessions</p>
+    </a>
+    <a href="/student/login" class="portal-card">
+      <div class="icon">🎓</div>
+      <h3>Student Portal</h3>
+      <p>Mark your attendance</p>
+    </a>
+  </div>
+
+  <!-- Admin login -->
+  <div style="margin-top:30px;border-top:1px solid #eee;padding-top:20px">
+    <p style="color:#999;font-size:13px;margin-bottom:12px">Admin Access</p>
+    <form id="adminForm" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
+      <input type="text" id="admin_user" placeholder="Username"
+             style="padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px;width:130px">
+      <input type="password" id="admin_pass" placeholder="Password"
+             style="padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px;width:130px">
+      <button type="submit" class="btn btn-sm">Login</button>
+    </form>
+    <p id="adminError" class="hidden" style="color:#c33;font-size:13px;margin-top:8px">Invalid credentials</p>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('adminForm').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  const fd = new FormData();
+  fd.append('username', document.getElementById('admin_user').value);
+  fd.append('password', document.getElementById('admin_pass').value);
+  const res = await fetch('/login', { method: 'POST', body: fd });
+  const data = await res.json();
+  if (data.success) window.location.href = '/menu';
+  else document.getElementById('adminError').style.display = 'block';
+});
+</script>
+{% endblock %}

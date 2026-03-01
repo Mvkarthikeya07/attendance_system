@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Faculty Login{% endblock %}
+{% block body_class %}auth-page{% endblock %}
+
+{% block content %}
+<div class="auth-card">
+
+  <!-- LOGIN -->
+  <div id="login-section">
+    <h1>👨‍🏫 Faculty Login</h1>
+    {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
+    {% if success %}<div class="alert alert-success">{{ success }}</div>{% endif %}
+
+    <form method="POST" action="/faculty/login">
+      <div class="form-group"><label>Email</label><input type="email" name="email" required></div>
+      <div class="form-group"><label>Password</label><input type="password" name="password" required></div>
+      <div class="forgot-link"><a href="javascript:void(0)" onclick="showForgot()">Forgot Password?</a></div>
+      <button type="submit" class="btn btn-block">Login</button>
+    </form>
+    <div class="text-link">
+      <a href="/faculty/signup">Create Account</a> | <a href="/student/login">Student Login</a>
+    </div>
+  </div>
+
+  <!-- RESET PASSWORD -->
+  <div id="forgot-section" class="forgot-panel">
+    <h2>🔒 Reset Password</h2>
+    <p>Enter your email and new password</p>
+    {% if reset_error %}<div class="alert alert-error">{{ reset_error }}</div>{% endif %}
+    {% if reset_success %}<div class="alert alert-success">{{ reset_success }}</div>{% endif %}
+    <form method="POST" action="/faculty/reset-password">
+      <div class="form-group"><label>Email</label><input type="email" name="reset_email" required placeholder="Registered email"></div>
+      <div class="form-group"><label>New Password</label><input type="password" name="new_password" required></div>
+      <div class="form-group"><label>Confirm Password</label><input type="password" name="confirm_password" required></div>
+      <button type="submit" class="btn btn-block">Reset Password</button>
+    </form>
+    <div class="text-link"><a href="javascript:void(0)" onclick="showLogin()">← Back to Login</a></div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if reset_error or reset_success %}<input type="hidden" id="showResetPanel" value="1">{% endif %}
+<script>
+function showForgot(){ document.getElementById('login-section').style.display='none'; document.getElementById('forgot-section').style.display='block'; }
+function showLogin(){ document.getElementById('forgot-section').style.display='none'; document.getElementById('login-section').style.display='block'; }
+if(document.getElementById('showResetPanel')) showForgot();
+</script>
+{% endblock %}

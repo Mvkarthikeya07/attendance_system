@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Admin Dashboard{% endblock %}
+
+{% block content %}
+<div class="container-md">
+  <div class="page-header">
+    <form method="POST" action="/logout" style="display:inline;float:right">
+      <button type="submit" class="logout-btn" style="background:rgba(255,255,255,.2);border:2px solid #fff;color:#fff">Logout</button>
+    </form>
+    <h1>📋 Admin Dashboard</h1>
+  </div>
+
+  <div class="menu-grid">
+    <a href="/dashboard?attendance_type=normal" style="text-decoration:none;color:inherit">
+      <div class="menu-card">
+        <div class="icon">📸</div>
+        <h3>Start Normal Attendance</h3>
+        <p>Regular attendance session</p>
+      </div>
+    </a>
+    <a href="/dashboard?attendance_type=late" style="text-decoration:none;color:inherit">
+      <div class="menu-card">
+        <div class="icon">⏰</div>
+        <h3>Start Late Attendance</h3>
+        <p>For students arriving late</p>
+      </div>
+    </a>
+    <a href="/records" style="text-decoration:none;color:inherit">
+      <div class="menu-card">
+        <div class="icon">📊</div>
+        <h3>View Records</h3>
+        <p>Check attendance history</p>
+      </div>
+    </a>
+    <a href="/faculty/students" style="text-decoration:none;color:inherit">
+      <div class="menu-card">
+        <div class="icon">👥</div>
+        <h3>Manage Students</h3>
+        <p>Register &amp; view students</p>
+      </div>
+    </a>
+  </div>
+</div>
+{% endblock %}
