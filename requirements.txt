@@ -6,3 +6,4 @@ ultralytics
 mysql-connector-python
 twilio
 python-dotenv
+requests
