@@ -1,8 +1,6 @@
 """Entry point — run the Flask application."""
 
-from app import create_app
-
-application = create_app()
+from app import app
 
 if __name__ == "__main__":
-    application.run(debug=True)
+    app.run()

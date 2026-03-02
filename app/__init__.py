@@ -22,3 +22,7 @@ def create_app():
     register_blueprints(app)
 
     return app
+
+
+# Expose at module level so `gunicorn app:app` can find it
+app = create_app()
