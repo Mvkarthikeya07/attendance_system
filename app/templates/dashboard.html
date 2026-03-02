@@ -90,7 +90,6 @@ function endAttendance() {
   fetch("/stop_attendance").then(() => {
     const btn = document.querySelector(".btn-green");
     if (btn) { btn.innerText = "Take Attendance"; btn.disabled = false; }
-    alert("Attendance ended. Absent students have been marked.");
   });
 }
 </script>

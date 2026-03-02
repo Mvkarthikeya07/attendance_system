@@ -33,7 +33,7 @@ def update_frame(frame):
 MODE = "idle"
 STUDENT_NAME = ""
 COUNT = 0
-MESSAGE = "Waiting..."
+MESSAGE = "Attendence Closed"
 ATTENDANCE_TYPE = "normal"
 ATTENDANCE_START_TIME = None
 SESSION_END_TIME = None
@@ -287,7 +287,7 @@ def gen_frames():
                         if common and common[0][1] >= 5:
                             display_name = common[0][0]
                             mark_present_once(display_name)
-                            MESSAGE = f"Marked: {display_name}"
+                            MESSAGE = f"Marked: {display_name} Present"
                         else:
                             display_name = "Verifying..."
                             MESSAGE = "Recognizing face..."
