@@ -11,8 +11,11 @@ numpy>=1.24,<3.0
 ultralytics>=8.0,<9.0
 requests>=2.31,<3.0
 
-# Notifications (optional)
-twilio>=8.0,<10.0
+# CPU-only PyTorch — saves ~400 MB vs full CUDA build
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+torchvision
 
 # Production server
 gunicorn>=21.0,<23.0
+gevent>=24.0

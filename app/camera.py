@@ -208,100 +208,108 @@ def gen_frames():
     global COUNT, MESSAGE, recent_predictions, ATTENDANCE_START_TIME, latest_frame
 
     while True:
-        if latest_frame is None:
-            time.sleep(0.1)
-            continue
-
-        frame = latest_frame.copy()
-
-        if MODE == "attendance" and ATTENDANCE_START_TIME is None:
-            ATTENDANCE_START_TIME = datetime.now()
-        if MODE != "attendance":
-            ATTENDANCE_START_TIME = None
-
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        results = yolo_model(frame, conf=0.5, imgsz=320, verbose=False)
-        active_faces = set()
-
-        if len(results[0].boxes) == 0:
-            if MODE == "attendance":
-                MESSAGE = "Taking Attendance... No face detected"
-            elif MODE == "register":
-                MESSAGE = "Waiting for face — look at the camera"
-            else:
-                MESSAGE = "Waiting..."
-            recent_predictions.clear()
-
-        for box in results[0].boxes:
-            x1, y1, x2, y2 = map(int, box.xyxy[0])
-            if (x2 - x1) < 80 or (y2 - y1) < 80:
+        try:
+            if latest_frame is None:
+                time.sleep(0.1)
                 continue
 
-            face = gray[y1:y2, x1:x2]
-            if face.size == 0:
-                continue
+            frame = latest_frame.copy()
 
-            face_id = f"{x1 // 50}_{y1 // 50}"
-            active_faces.add(face_id)
-            display_name = ""
+            if MODE == "attendance" and ATTENDANCE_START_TIME is None:
+                ATTENDANCE_START_TIME = datetime.now()
+            if MODE != "attendance":
+                ATTENDANCE_START_TIME = None
 
-            # Registration mode
-            if MODE == "register":
-                if COUNT < 10:
-                    os.makedirs(os.path.join(DATASET_DIR, STUDENT_NAME), exist_ok=True)
-                    COUNT += 1
-                    face_save = cv2.resize(face, (200, 200))
-                    cv2.imwrite(
-                        os.path.join(DATASET_DIR, STUDENT_NAME, f"{COUNT}.jpg"), face_save
-                    )
-                    MESSAGE = f"Capturing {STUDENT_NAME}: {COUNT}/10 — Hold still"
-                elif COUNT == 10:
-                    MESSAGE = f"Training model for {STUDENT_NAME}... Please wait"
-                    threading.Thread(target=train_model, daemon=True).start()
-                    COUNT = 11
-                # COUNT > 10 means training in progress or done — MESSAGE is set by train_model()
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            results = yolo_model(frame, conf=0.5, imgsz=320, verbose=False)
+            active_faces = set()
 
-            # Attendance mode
-            if MODE == "attendance":
-                if not recognizer:
-                    MESSAGE = "No trained model — register faces first"
+            if len(results[0].boxes) == 0:
+                if MODE == "attendance":
+                    MESSAGE = "Taking Attendance... No face detected"
+                elif MODE == "register":
+                    MESSAGE = "Waiting for face — look at the camera"
                 else:
-                    face_resized = cv2.resize(face, (200, 200))
-                    label, conf = recognizer.predict(face_resized)
-                    if conf <= 80 and label in label_map:
-                        recent_predictions[face_id].append(label_map[label])
-                        if len(recent_predictions[face_id]) > 10:
-                            recent_predictions[face_id].pop(0)
-                        common = Counter(recent_predictions[face_id]).most_common(1)
-                        if common and common[0][1] >= 7:
-                            display_name = common[0][0]
-                            mark_present_once(display_name)
-                            MESSAGE = f"Marked: {display_name} Present"
-                        else:
-                            display_name = "Verifying..."
-                            MESSAGE = "Recognizing face..."
+                    MESSAGE = "Waiting..."
+                recent_predictions.clear()
+
+            for box in results[0].boxes:
+                x1, y1, x2, y2 = map(int, box.xyxy[0])
+                if (x2 - x1) < 80 or (y2 - y1) < 80:
+                    continue
+
+                face = gray[y1:y2, x1:x2]
+                if face.size == 0:
+                    continue
+
+                face_id = f"{x1 // 50}_{y1 // 50}"
+                active_faces.add(face_id)
+                display_name = ""
+
+                # Registration mode
+                if MODE == "register":
+                    if COUNT < 10:
+                        os.makedirs(os.path.join(DATASET_DIR, STUDENT_NAME), exist_ok=True)
+                        COUNT += 1
+                        face_save = cv2.resize(face, (200, 200))
+                        cv2.imwrite(
+                            os.path.join(DATASET_DIR, STUDENT_NAME, f"{COUNT}.jpg"), face_save
+                        )
+                        MESSAGE = f"Capturing {STUDENT_NAME}: {COUNT}/10 — Hold still"
+                    elif COUNT == 10:
+                        MESSAGE = f"Training model for {STUDENT_NAME}... Please wait"
+                        threading.Thread(target=train_model, daemon=True).start()
+                        COUNT = 11
+                    # COUNT > 10 means training in progress or done — MESSAGE is set by train_model()
+
+                # Attendance mode
+                if MODE == "attendance":
+                    if not recognizer:
+                        MESSAGE = "No trained model — register faces first"
                     else:
-                        display_name = "Unknown"
-                        MESSAGE = "Face not recognized"
+                        face_resized = cv2.resize(face, (200, 200))
+                        label, conf = recognizer.predict(face_resized)
+                        if conf <= 80 and label in label_map:
+                            recent_predictions[face_id].append(label_map[label])
+                            if len(recent_predictions[face_id]) > 10:
+                                recent_predictions[face_id].pop(0)
+                            common = Counter(recent_predictions[face_id]).most_common(1)
+                            if common and common[0][1] >= 7:
+                                display_name = common[0][0]
+                                mark_present_once(display_name)
+                                MESSAGE = f"Marked: {display_name} Present"
+                            else:
+                                display_name = "Verifying..."
+                                MESSAGE = "Recognizing face..."
+                        else:
+                            display_name = "Unknown"
+                            MESSAGE = "Face not recognized"
 
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            if display_name:
-                cv2.putText(frame, display_name, (x1, y1 - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                if display_name:
+                    cv2.putText(frame, display_name, (x1, y1 - 10),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
 
-        # Remove stale predictions
-        for fid in list(recent_predictions.keys()):
-            if fid not in active_faces:
-                del recent_predictions[fid]
+            # Remove stale predictions
+            for fid in list(recent_predictions.keys()):
+                if fid not in active_faces:
+                    del recent_predictions[fid]
 
-        cv2.putText(frame, MESSAGE, (20, 40),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+            cv2.putText(frame, MESSAGE, (20, 40),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
 
-        _, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
-        yield (
-            b"--frame\r\n"
-            b"Content-Type: image/jpeg\r\n\r\n" + buffer.tobytes() + b"\r\n"
-        )
+            _, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+            yield (
+                b"--frame\r\n"
+                b"Content-Type: image/jpeg\r\n\r\n" + buffer.tobytes() + b"\r\n"
+            )
 
-        # Pace the MJPEG stream — ~12 fps is plenty for a live preview
-        time.sleep(0.08)
+            # Pace the MJPEG stream — ~12 fps is plenty for a live preview
+            time.sleep(0.08)
+
+        except (GeneratorExit, SystemExit):
+            # Worker is shutting down or client disconnected — exit cleanly
+            return
+        except Exception as e:
+            print(f"gen_frames error: {e}")
+            time.sleep(0.5)
