@@ -15,7 +15,7 @@
 {% block content %}
 <div class="container-md" style="margin-top:40px">
   <div class="card" style="text-align:center">
-    <h2>Camera Dashboard — Attendance</h2>
+    <h2>Camera Dashboard</h2>
 
     <div class="camera-box">
       <img id="videoFeed" src="/video_feed" alt="Camera Feed">
@@ -73,7 +73,7 @@ async function registerFace() {
   const fd = new FormData(); fd.append("name", name);
   await fetch("/register", { method: "POST", body: fd });
   const s = document.getElementById("registerStatus");
-  if (s) s.innerText = "Capturing " + name + "… Hold still and look at the camera!";
+  if (s) { s.innerText = `${name} Hold Still!`; setTimeout(() => s.innerText = "", 3000); }
 }
 
 /* Auto-fill name from query param */
