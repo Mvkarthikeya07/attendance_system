@@ -1,0 +1,21 @@
+{
+  "settings_version": "0.0.6",
+  "datasets_dir": "E:\\attendance_system\\datasets",
+  "weights_dir": "weights",
+  "runs_dir": "runs",
+  "uuid": "1700c6f022070ceb09ec2b83cc1804a3b003ebbb418b31eafba7182e0270401f",
+  "sync": true,
+  "api_key": "",
+  "openai_api_key": "",
+  "clearml": true,
+  "comet": true,
+  "dvc": true,
+  "hub": true,
+  "mlflow": true,
+  "neptune": true,
+  "raytune": true,
+  "tensorboard": false,
+  "wandb": false,
+  "vscode_msg": true,
+  "openvino_msg": true
+}

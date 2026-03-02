@@ -11,12 +11,22 @@
     will-change: contents;
     transform: translateZ(0);
   }
+  .camera-box canvas,
   .camera-box img {
     width: 100%;
     border-radius: 15px;
     display: block;
     aspect-ratio: 4/3;
     object-fit: cover;
+  }
+  #localPreview {
+    position: absolute; top: 0; left: 0;
+    width: 100%; height: 100%;
+    object-fit: cover; z-index: 1;
+    border-radius: 15px;
+  }
+  #processedFeed {
+    position: relative; z-index: 2;
   }
   .cam-buttons {
     margin-top: 25px;
@@ -37,6 +47,15 @@
     transition: transform .2s, box-shadow .2s;
   }
   .btn-switch:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(102,126,234,.4); }
+  #statusBar {
+    text-align: center;
+    padding: 10px;
+    margin-top: 12px;
+    font-weight: 600;
+    font-size: 15px;
+    color: #00d4ff;
+    min-height: 1.5em;
+  }
   @media (max-width: 480px) {
     .cam-buttons button { flex: 1; min-width: 110px; font-size: 14px; }
   }
@@ -49,12 +68,19 @@
     <h2>Camera Dashboard</h2>
 
     <div class="camera-box">
-      <img id="videoFeed" src="/video_feed" alt="Camera Feed">
+      <!-- Hidden video element — source for frame capture -->
+      <video id="webcam" autoplay playsinline muted style="display:none"></video>
+      <!-- Local mirror shown until server starts returning frames -->
+      <canvas id="localPreview"></canvas>
+      <!-- Annotated frame returned by /api/frame -->
+      <img id="processedFeed" alt="Processed feed" style="display:none">
     </div>
+
+    <div id="statusBar">Initialising camera...</div>
 
     {% if request.args.get('mode') != 'register' %}
     <div class="cam-buttons">
-      <button class="btn btn-green" onclick="startAttendance()">Take Attendance</button>
+      <button class="btn btn-green" id="btnAttendance" onclick="startAttendance()">Take Attendance</button>
       <button class="btn-switch" onclick="switchCamera()">🔄 Switch Camera</button>
       <button class="btn btn-red" onclick="endAttendance()">End Attendance</button>
     </div>
@@ -80,35 +106,27 @@
 
 {% block scripts %}
 <script>
+// ── Elements ───────────────────────────────────────────────────
+const video       = document.getElementById("webcam");
+const localCanvas = document.getElementById("localPreview");
+const localCtx    = localCanvas.getContext("2d");
+const processed   = document.getElementById("processedFeed");
+const statusBar   = document.getElementById("statusBar");
 
-// CAMERA + FRAME UPLOAD (mobile & desktop)
-const video = document.createElement("video");
-video.autoplay = true;
-video.playsInline = true;
-video.muted = true;
-video.setAttribute("playsinline", "");
-video.style.display = "none";
-document.body.appendChild(video);
-
-const sendCanvas = document.createElement("canvas");
-const sendCtx = sendCanvas.getContext("2d");
-
-let isSending = false;             // skip frame if previous fetch in-flight
+let streaming = false;     // whether we're sending frames to server
+let sendLoop  = null;      // interval id
+let isSending = false;     // guard against overlapping fetches
 let currentStream = null;
-let useFrontCamera = true;         // default: front (selfie) camera
+let useFrontCamera = true;
 
-// Max dimension to scale frames down to before sending
 const MAX_SEND_DIM = 480;
-// Upload interval in ms (balanced: fast enough for recognition, light on network)
-const SEND_INTERVAL = 350;
+const SEND_INTERVAL = 300; // ~3 fps — balanced latency vs server load
 
 // ── Start / switch camera ──────────────────────────────────────
 async function startCamera(facingMode) {
-  // Stop any existing tracks first
   if (currentStream) {
     currentStream.getTracks().forEach(t => t.stop());
   }
-
   const constraints = {
     video: {
       facingMode: facingMode || "user",
@@ -117,21 +135,28 @@ async function startCamera(facingMode) {
     },
     audio: false
   };
-
   try {
     const stream = await navigator.mediaDevices.getUserMedia(constraints);
     video.srcObject = stream;
     currentStream = stream;
     await video.play();
+    localCanvas.width  = video.videoWidth  || 640;
+    localCanvas.height = video.videoHeight || 480;
+    statusBar.textContent = "Camera ready";
+    drawLocalPreview();
   } catch (err) {
-    // Fallback: try without facingMode (some desktop webcams reject it)
     try {
       const fallback = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
       video.srcObject = fallback;
       currentStream = fallback;
       await video.play();
+      localCanvas.width  = video.videoWidth  || 640;
+      localCanvas.height = video.videoHeight || 480;
+      statusBar.textContent = "Camera ready";
+      drawLocalPreview();
     } catch (e) {
       console.error("Camera error:", e);
+      statusBar.textContent = "⚠️ Camera access denied or unavailable";
     }
   }
 }
@@ -140,72 +165,133 @@ function switchCamera() {
   useFrontCamera = !useFrontCamera;
   startCamera(useFrontCamera ? "user" : "environment");
 }
-
-// Expose globally so a button can call it
 window.switchCamera = switchCamera;
 
-// ── Efficient frame sender ─────────────────────────────────────
-function sendFrame() {
-  if (isSending || !video.videoWidth) return;
-
-  // Scale down to save bandwidth & server CPU
-  let w = video.videoWidth, h = video.videoHeight;
-  if (w > MAX_SEND_DIM || h > MAX_SEND_DIM) {
-    const scale = MAX_SEND_DIM / Math.max(w, h);
-    w = Math.round(w * scale);
-    h = Math.round(h * scale);
+// ── Draw local mirror (so user always see themselves) ──────────
+function drawLocalPreview() {
+  if (!video.videoWidth) { requestAnimationFrame(drawLocalPreview); return; }
+  localCtx.drawImage(video, 0, 0, localCanvas.width, localCanvas.height);
+  if (!streaming) {
+    // When not streaming, keep updating the local mirror
+    requestAnimationFrame(drawLocalPreview);
   }
-  sendCanvas.width = w;
-  sendCanvas.height = h;
-  sendCtx.drawImage(video, 0, 0, w, h);
+}
 
-  // Convert to blob (faster & smaller than dataURL round-trip)
-  sendCanvas.toBlob(function(blob) {
-    if (!blob) return;
-    isSending = true;
+// ── Capture one JPEG from the video element ────────────────────
+function captureJPEG() {
+  const w = video.videoWidth  || 640;
+  const h = video.videoHeight || 480;
+
+  // Scale down to save bandwidth
+  let sw = w, sh = h;
+  if (sw > MAX_SEND_DIM || sh > MAX_SEND_DIM) {
+    const scale = MAX_SEND_DIM / Math.max(sw, sh);
+    sw = Math.round(sw * scale);
+    sh = Math.round(sh * scale);
+  }
+
+  const c = document.createElement("canvas");
+  c.width = sw; c.height = sh;
+  c.getContext("2d").drawImage(video, 0, 0, sw, sh);
+
+  return new Promise(resolve => {
+    c.toBlob(blob => resolve(blob), "image/jpeg", 0.60);
+  });
+}
+
+// ── Send frame to server, display annotated result ─────────────
+async function sendFrame() {
+  if (isSending || !video.videoWidth) return;
+  isSending = true;
+  try {
+    const blob = await captureJPEG();
+    if (!blob) { isSending = false; return; }
+
     const fd = new FormData();
     fd.append("frame", blob, "frame.jpg");
 
-    fetch("/process_frame", { method: "POST", body: fd })
-      .catch(e => console.error("Upload error:", e))
-      .finally(() => { isSending = false; });
-  }, "image/jpeg", 0.55);
+    const resp = await fetch("/api/frame", { method: "POST", body: fd });
+
+    if (resp.ok) {
+      const annotated = await resp.blob();
+      const url = URL.createObjectURL(annotated);
+      processed.onload = () => URL.revokeObjectURL(url);
+      processed.src = url;
+      processed.style.display = "block";
+      localCanvas.style.display = "none";
+
+      const msg = resp.headers.get("X-Message");
+      if (msg) statusBar.textContent = msg;
+    }
+  } catch (e) {
+    console.error("Frame send error:", e);
+  }
+  isSending = false;
 }
 
-// ── Kick off camera + interval ─────────────────────────────────
-startCamera("user");
-setInterval(sendFrame, SEND_INTERVAL);
+// ── Start / stop the frame send loop ───────────────────────────
+function startSending() {
+  if (streaming) return;
+  streaming = true;
+  localCanvas.style.display = "block";
+  processed.style.display = "none";
+  sendLoop = setInterval(sendFrame, SEND_INTERVAL);
+}
 
-// ===============================
-// REGISTER FACE
-// ===============================
+function stopSending() {
+  streaming = false;
+  if (sendLoop) { clearInterval(sendLoop); sendLoop = null; }
+  // Show local preview again
+  localCanvas.style.display = "block";
+  processed.style.display = "none";
+  drawLocalPreview();
+}
+
+// ── Poll status (training progress, mode changes) ──────────────
+async function pollStatus() {
+  try {
+    const resp = await fetch("/api/status");
+    const data = await resp.json();
+    if (data.message) statusBar.textContent = data.message;
+    // If mode went idle while streaming (e.g. training finished), keep
+    // streaming a bit so user sees the "Registration Complete" message
+  } catch (_) {}
+}
+setInterval(pollStatus, 2000);
+
+// ── Control buttons ────────────────────────────────────────────
+function startAttendance() {
+  fetch("/start_attendance").then(() => {
+    const btn = document.getElementById("btnAttendance");
+    if (btn) { btn.innerText = "Attendance Running..."; btn.disabled = true; }
+    startSending();
+  });
+}
+
+function endAttendance() {
+  fetch("/stop_attendance").then(() => {
+    const btn = document.getElementById("btnAttendance");
+    if (btn) { btn.innerText = "Take Attendance"; btn.disabled = false; }
+    stopSending();
+    statusBar.textContent = "Attendance Ended";
+  });
+}
+
 async function registerFace() {
   const name = document.getElementById("studentName")?.value.trim();
   if (!name) { alert("Please enter a student name."); return; }
   const fd = new FormData(); fd.append("name", name);
   await fetch("/register", { method: "POST", body: fd });
   const s = document.getElementById("registerStatus");
-  if (s) { s.innerText = `${name} Hold Still!`; setTimeout(() => s.innerText = "", 3000); }
+  if (s) { s.innerText = `${name} — Hold Still!`; setTimeout(() => s.innerText = "", 5000); }
+  startSending();
 }
 
 // Auto-fill name from query param
 const prefilled = new URLSearchParams(location.search).get("name");
 if (prefilled) { const el = document.getElementById("studentName"); if (el) el.value = prefilled; }
 
-// ===============================
-// ATTENDANCE CONTROLS
-// ===============================
-function startAttendance() {
-  fetch("/start_attendance").then(() => {
-    const btn = document.querySelector(".btn-green");
-    if (btn) { btn.innerText = "Attendance Running..."; btn.disabled = true; }
-  });
-}
-function endAttendance() {
-  fetch("/stop_attendance").then(() => {
-    const btn = document.querySelector(".btn-green");
-    if (btn) { btn.innerText = "Take Attendance"; btn.disabled = false; }
-  });
-}
+// ── Init camera on page load ───────────────────────────────────
+startCamera("user");
 </script>
 {% endblock %}

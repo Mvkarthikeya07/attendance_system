@@ -1,11 +1,10 @@
 """
-Attendance routes — camera dashboard, frame upload, video feed.
+Attendance routes — camera dashboard, frame processing, controls.
 """
 
 from functools import wraps
 from datetime import datetime, date as date_cls
 
-import base64
 import numpy as np
 import cv2
 from flask import Blueprint, render_template, request, redirect, session, jsonify, Response
@@ -42,37 +41,47 @@ def dashboard():
     return render_template("dashboard.html", attendance_type=attendance_type)
 
 
-# ── Frame upload (JSON base64) ──────────────────────────────────────
+# ── Frame processing ───────────────────────────────────────────────
+# Browser sends a JPEG frame via POST, server processes it with
+# YOLO + LBPH and returns the annotated JPEG + status message.
 
-@attendance_bp.route("/upload_frame", methods=["POST"])
+@attendance_bp.route("/api/frame", methods=["POST"])
 @login_required
-def upload_frame():
-    data = request.json
-    image_data = data.get("image") if data else None
-    if not image_data:
-        return jsonify({"status": "error"}), 400
+def api_frame():
+    # Accept both multipart (FormData) and raw octet-stream
+    if request.content_type and "multipart" in request.content_type:
+        file = request.files.get("frame")
+        if not file:
+            return jsonify({"error": "No frame data"}), 400
+        jpeg_bytes = file.read()
+    else:
+        jpeg_bytes = request.data
 
-    image_data = image_data.split(",")[1]
-    image_bytes = base64.b64decode(image_data)
-    np_arr = np.frombuffer(image_bytes, np.uint8)
-    frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-    camera.update_frame(frame)
-    return jsonify({"status": "ok"})
+    if not jpeg_bytes:
+        return jsonify({"error": "No frame data"}), 400
+
+    annotated, message = camera.process_frame(jpeg_bytes)
+    if annotated is None:
+        return jsonify({"error": message}), 400
+
+    return Response(
+        annotated,
+        mimetype="image/jpeg",
+        headers={"X-Message": message},
+    )
 
 
-# ── Frame upload (multipart) ───────────────────────────────────────
+# ── Status endpoint (polled by JS for mode/message updates) ────────
 
-@attendance_bp.route("/process_frame", methods=["POST"])
+@attendance_bp.route("/api/status")
 @login_required
-def process_frame():
-    file = request.files.get("frame")
-    if not file:
-        return jsonify({"status": "error"}), 400
-    np_arr = np.frombuffer(file.read(), np.uint8)
-    frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-    if frame is not None:
-        camera.update_frame(frame)
-    return jsonify({"status": "ok"})
+def api_status():
+    return jsonify({
+        "mode": camera.MODE,
+        "message": camera.MESSAGE,
+        "count": camera.COUNT,
+        "student_name": camera.STUDENT_NAME,
+    })
 
 
 # ── Register face ──────────────────────────────────────────────────
@@ -123,14 +132,3 @@ def stop_attendance():
     camera.ATTENDANCE_TYPE = "normal"
     camera.MESSAGE = "Attendance Ended"
     return ("", 204)
-
-
-# ── Video feed (MJPEG) ─────────────────────────────────────────────
-
-@attendance_bp.route("/video_feed")
-@login_required
-def video_feed():
-    return Response(
-        camera.gen_frames(),
-        mimetype="multipart/x-mixed-replace; boundary=frame",
-    )
