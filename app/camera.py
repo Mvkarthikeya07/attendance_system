@@ -65,29 +65,12 @@ elif not _has_lbph:
 
 # ── YOLO model download / load ──────────────────────────────────────
 _model_path = MODEL_PATH
-MODEL_URLS = [
-    "https://github.com/akanametov/yolov8-face/releases/download/v0.0.0/yolov8n-face.pt",
-    "https://github.com/derronqi/yolov8-face/releases/download/v1/yolov8n-face.pt",
-]
 
+# The model file yolov8s-face-lindevs.pt is bundled in the repo.
+# If it's missing for any reason, fall back to generic yolov8n.
 if not os.path.isfile(_model_path):
-    downloaded = False
-    for url in MODEL_URLS:
-        try:
-            print(f"Downloading YOLO model from {url} ...")
-            response = req.get(url, stream=True, timeout=30)
-            response.raise_for_status()
-            with open(_model_path, "wb") as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    f.write(chunk)
-            print("Model downloaded successfully.")
-            downloaded = True
-            break
-        except Exception as e:
-            print(f"Failed: {e}")
-    if not downloaded:
-        print("All face-model URLs failed. Falling back to yolov8n.pt")
-        _model_path = "yolov8n.pt"
+    print(f"WARNING: Face model '{_model_path}' not found. Falling back to yolov8n.pt")
+    _model_path = "yolov8n.pt"
 
 yolo_model = YOLO(_model_path)
 

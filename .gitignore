@@ -28,8 +28,10 @@ dataset/
 # Model files (generated)
 trainer.yml
 labels.pickle
-*.pt
 *.pth
+# Ignore downloaded .pt files except our bundled face model
+*.pt
+!yolov8s-face-lindevs.pt
 
 # Logs
 *.log
