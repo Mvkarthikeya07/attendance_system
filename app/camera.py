@@ -7,6 +7,11 @@ import time
 import pickle
 import threading
 
+# Set Ultralytics config dir before importing YOLO
+# (avoids warning on read-only filesystems like Render)
+if not os.environ.get("YOLO_CONFIG_DIR"):
+    os.environ["YOLO_CONFIG_DIR"] = "/tmp/Ultralytics"
+
 import cv2
 import numpy as np
 import requests as req
