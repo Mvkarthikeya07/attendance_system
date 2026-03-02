@@ -1,7 +1,7 @@
-"""Entry point — run the Flask application."""
+"""Entry point — run the Flask application locally."""
 
 from app import app
 
 if __name__ == "__main__":
-    app.run()
+    app.run(host="0.0.0.0", port=5000, debug=True)
  
