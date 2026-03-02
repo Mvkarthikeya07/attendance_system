@@ -15,7 +15,11 @@ def create_app():
 
     # Initialise database tables
     from app.database import init_db
-    init_db()
+    try:
+        init_db()
+    except Exception as e:
+        print(f"⚠️  Database initialisation failed: {e}")
+        print("App will start, but DB features may not work until the connection is available.")
 
     # Register all blueprints
     from app.routes import register_blueprints

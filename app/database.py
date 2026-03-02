@@ -11,16 +11,11 @@ load_dotenv()
 
 def get_connection():
     """Return a new MySQL connection using environment variables."""
-    required = ["MYSQLHOST", "MYSQLUSER", "MYSQLPASSWORD", "MYSQLDATABASE"]
-    for var in required:
-        if not os.environ.get(var):
-            raise RuntimeError(f"Missing environment variable: {var}")
-
     return mysql.connector.connect(
-        host=os.environ["MYSQLHOST"],
-        user=os.environ["MYSQLUSER"],
-        password=os.environ["MYSQLPASSWORD"],
-        database=os.environ["MYSQLDATABASE"],
+        host=os.environ.get("MYSQLHOST", "localhost"),
+        user=os.environ.get("MYSQLUSER", "root"),
+        password=os.environ.get("MYSQLPASSWORD", ""),
+        database=os.environ.get("MYSQLDATABASE", "attendance"),
         port=int(os.environ.get("MYSQLPORT", 3306)),
     )
 
