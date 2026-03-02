@@ -11,13 +11,20 @@ load_dotenv()
 
 def get_connection():
     """Return a new MySQL connection using environment variables."""
-    return mysql.connector.connect(
+    config = dict(
         host=os.environ.get("MYSQLHOST", "localhost"),
         user=os.environ.get("MYSQLUSER", "root"),
         password=os.environ.get("MYSQLPASSWORD", ""),
         database=os.environ.get("MYSQLDATABASE", "attendance"),
         port=int(os.environ.get("MYSQLPORT", 3306)),
+        connection_timeout=10,
     )
+
+    # Railway public endpoints require SSL
+    if os.environ.get("MYSQL_USE_SSL", "true").lower() == "true":
+        config["ssl_disabled"] = False
+
+    return mysql.connector.connect(**config)
 
 
 def init_db():

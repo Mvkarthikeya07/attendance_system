@@ -66,8 +66,8 @@ elif not _has_lbph:
 # ── YOLO model download / load ──────────────────────────────────────
 _model_path = MODEL_PATH
 MODEL_URLS = [
-    "https://github.com/lindevs/yolov8-face/releases/download/v0.0.1/yolov8s-face-lindevs.pt",
-    "https://github.com/lindevs/yolov8-face/releases/download/v1.0.0/yolov8s-face-lindevs.pt",
+    "https://github.com/akanametov/yolov8-face/releases/download/v0.0.0/yolov8n-face.pt",
+    "https://github.com/derronqi/yolov8-face/releases/download/v1/yolov8n-face.pt",
 ]
 
 if not os.path.isfile(_model_path):
