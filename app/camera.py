@@ -231,7 +231,7 @@ def gen_frames():
             ATTENDANCE_START_TIME = None
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        results = yolo_model(frame, conf=0.5, imgsz=480)
+        results = yolo_model(frame, conf=0.5, imgsz=320, verbose=False)
         active_faces = set()
 
         if len(results[0].boxes) == 0:
@@ -284,7 +284,7 @@ def gen_frames():
                         if len(recent_predictions[face_id]) > 10:
                             recent_predictions[face_id].pop(0)
                         common = Counter(recent_predictions[face_id]).most_common(1)
-                        if common and common[0][1] >= 5:
+                        if common and common[0][1] >= 7:
                             display_name = common[0][0]
                             mark_present_once(display_name)
                             MESSAGE = f"Marked: {display_name} Present"
@@ -308,8 +308,11 @@ def gen_frames():
         cv2.putText(frame, MESSAGE, (20, 40),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
 
-        _, buffer = cv2.imencode(".jpg", frame)
+        _, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
         yield (
             b"--frame\r\n"
             b"Content-Type: image/jpeg\r\n\r\n" + buffer.tobytes() + b"\r\n"
         )
+
+        # Pace the MJPEG stream — ~12 fps is plenty for a live preview
+        time.sleep(0.08)

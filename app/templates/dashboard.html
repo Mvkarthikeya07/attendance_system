@@ -3,11 +3,42 @@
 
 {% block extra_css %}
 <style>
-  .camera-box { border-radius: 15px; overflow: hidden; background: #ddd; }
-  .camera-box img { width: 100%; border-radius: 15px; }
-  .cam-buttons { margin-top: 25px; display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; }
+  .camera-box {
+    border-radius: 15px;
+    overflow: hidden;
+    background: #111;
+    position: relative;
+    will-change: contents;
+    transform: translateZ(0);
+  }
+  .camera-box img {
+    width: 100%;
+    border-radius: 15px;
+    display: block;
+    aspect-ratio: 4/3;
+    object-fit: cover;
+  }
+  .cam-buttons {
+    margin-top: 25px;
+    display: flex;
+    justify-content: center;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  .btn-switch {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 12px 22px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform .2s, box-shadow .2s;
+  }
+  .btn-switch:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(102,126,234,.4); }
   @media (max-width: 480px) {
-    .cam-buttons button { flex: 1; min-width: 120px; }
+    .cam-buttons button { flex: 1; min-width: 110px; font-size: 14px; }
   }
 </style>
 {% endblock %}
@@ -24,7 +55,12 @@
     {% if request.args.get('mode') != 'register' %}
     <div class="cam-buttons">
       <button class="btn btn-green" onclick="startAttendance()">Take Attendance</button>
+      <button class="btn-switch" onclick="switchCamera()">🔄 Switch Camera</button>
       <button class="btn btn-red" onclick="endAttendance()">End Attendance</button>
+    </div>
+    {% else %}
+    <div class="cam-buttons">
+      <button class="btn-switch" onclick="switchCamera()">🔄 Switch Camera</button>
     </div>
     {% endif %}
 
@@ -44,29 +80,105 @@
 
 {% block scripts %}
 <script>
-/* Hidden front-camera → send frames to server */
+
+// CAMERA + FRAME UPLOAD (mobile & desktop)
 const video = document.createElement("video");
-video.autoplay = true; video.playsInline = true; video.style.display = "none";
-const canvas = document.createElement("canvas");
-const ctx = canvas.getContext("2d");
+video.autoplay = true;
+video.playsInline = true;
+video.muted = true;
+video.setAttribute("playsinline", "");
+video.style.display = "none";
+document.body.appendChild(video);
 
-navigator.mediaDevices.getUserMedia({ video: true })
-.then(stream => {
-  video.srcObject = stream;
-  setInterval(() => {
-    if (!video.videoWidth) return;
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    ctx.drawImage(video, 0, 0);
-    fetch("/upload_frame", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ image: canvas.toDataURL("image/jpeg", 0.6) })
-    });
-  }, 80);
-}).catch(err => console.error("Camera error:", err));
+const sendCanvas = document.createElement("canvas");
+const sendCtx = sendCanvas.getContext("2d");
 
-/* Register face */
+let isSending = false;             // skip frame if previous fetch in-flight
+let currentStream = null;
+let useFrontCamera = true;         // default: front (selfie) camera
+
+// Max dimension to scale frames down to before sending
+const MAX_SEND_DIM = 480;
+// Upload interval in ms (balanced: fast enough for recognition, light on network)
+const SEND_INTERVAL = 350;
+
+// ── Start / switch camera ──────────────────────────────────────
+async function startCamera(facingMode) {
+  // Stop any existing tracks first
+  if (currentStream) {
+    currentStream.getTracks().forEach(t => t.stop());
+  }
+
+  const constraints = {
+    video: {
+      facingMode: facingMode || "user",
+      width:  { ideal: 640 },
+      height: { ideal: 480 }
+    },
+    audio: false
+  };
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    video.srcObject = stream;
+    currentStream = stream;
+    await video.play();
+  } catch (err) {
+    // Fallback: try without facingMode (some desktop webcams reject it)
+    try {
+      const fallback = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      video.srcObject = fallback;
+      currentStream = fallback;
+      await video.play();
+    } catch (e) {
+      console.error("Camera error:", e);
+    }
+  }
+}
+
+function switchCamera() {
+  useFrontCamera = !useFrontCamera;
+  startCamera(useFrontCamera ? "user" : "environment");
+}
+
+// Expose globally so a button can call it
+window.switchCamera = switchCamera;
+
+// ── Efficient frame sender ─────────────────────────────────────
+function sendFrame() {
+  if (isSending || !video.videoWidth) return;
+
+  // Scale down to save bandwidth & server CPU
+  let w = video.videoWidth, h = video.videoHeight;
+  if (w > MAX_SEND_DIM || h > MAX_SEND_DIM) {
+    const scale = MAX_SEND_DIM / Math.max(w, h);
+    w = Math.round(w * scale);
+    h = Math.round(h * scale);
+  }
+  sendCanvas.width = w;
+  sendCanvas.height = h;
+  sendCtx.drawImage(video, 0, 0, w, h);
+
+  // Convert to blob (faster & smaller than dataURL round-trip)
+  sendCanvas.toBlob(function(blob) {
+    if (!blob) return;
+    isSending = true;
+    const fd = new FormData();
+    fd.append("frame", blob, "frame.jpg");
+
+    fetch("/process_frame", { method: "POST", body: fd })
+      .catch(e => console.error("Upload error:", e))
+      .finally(() => { isSending = false; });
+  }, "image/jpeg", 0.55);
+}
+
+// ── Kick off camera + interval ─────────────────────────────────
+startCamera("user");
+setInterval(sendFrame, SEND_INTERVAL);
+
+// ===============================
+// REGISTER FACE
+// ===============================
 async function registerFace() {
   const name = document.getElementById("studentName")?.value.trim();
   if (!name) { alert("Please enter a student name."); return; }
@@ -76,14 +188,17 @@ async function registerFace() {
   if (s) { s.innerText = `${name} Hold Still!`; setTimeout(() => s.innerText = "", 3000); }
 }
 
-/* Auto-fill name from query param */
+// Auto-fill name from query param
 const prefilled = new URLSearchParams(location.search).get("name");
 if (prefilled) { const el = document.getElementById("studentName"); if (el) el.value = prefilled; }
 
+// ===============================
+// ATTENDANCE CONTROLS
+// ===============================
 function startAttendance() {
   fetch("/start_attendance").then(() => {
-    document.querySelector(".btn-green").innerText = "Attendance Running...";
-    document.querySelector(".btn-green").disabled = true;
+    const btn = document.querySelector(".btn-green");
+    if (btn) { btn.innerText = "Attendance Running..."; btn.disabled = true; }
   });
 }
 function endAttendance() {
