@@ -130,5 +130,5 @@ def stop_attendance():
     camera.mark_absent_remaining(camera.ATTENDANCE_TYPE)
     camera.SESSION_END_TIME = None
     camera.ATTENDANCE_TYPE = "normal"
-    camera.MESSAGE = "Attendance Ended"
+    camera.MESSAGE = ""
     return ("", 204)

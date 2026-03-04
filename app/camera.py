@@ -14,6 +14,8 @@ import time
 import pickle
 import threading
 
+_register_lock = threading.Lock()
+
 # Set Ultralytics config dir before importing YOLO
 # (avoids warning on read-only filesystems like Render)
 # Ultralytics appends its own 'Ultralytics' subfolder, so point to /tmp
@@ -36,7 +38,7 @@ os.makedirs("dataset", exist_ok=True)
 MODE = "idle"
 STUDENT_NAME = ""
 COUNT = 0
-MESSAGE = "Attendance Closed"
+MESSAGE = ""
 ATTENDANCE_TYPE = "normal"
 ATTENDANCE_START_TIME = None
 SESSION_END_TIME = None
@@ -84,9 +86,8 @@ def train_model():
     global recognizer, label_map, MESSAGE, MODE
 
     if not _has_lbph:
-        MESSAGE = "ERROR: Face recognition module not available"
+        MESSAGE = "Face recognition module unavailable"
         MODE = "idle"
-        print("ERROR: Cannot train — cv2.face.LBPHFaceRecognizer not available.")
         return
 
     faces, labels, new_label_map = [], [], {}
@@ -109,9 +110,8 @@ def train_model():
         label_id += 1
 
     if not faces:
-        MESSAGE = "No face images found for training"
+        MESSAGE = "No face images found"
         MODE = "idle"
-        print("No face images found for training.")
         return
 
     new_recognizer = cv2.face.LBPHFaceRecognizer_create()
@@ -125,9 +125,7 @@ def train_model():
     label_map = new_label_map
     print(f"Model retrained. Labels: {label_map}")
 
-    # Update UI state so dashboard shows completion
-    MESSAGE = f"Registration Complete for {STUDENT_NAME}!"
-    # Keep MODE as register for a moment so dashboard can read it, then go idle
+    MESSAGE = f"Registered: {STUDENT_NAME}"
     time.sleep(2)
     MODE = "idle"
 
@@ -228,16 +226,14 @@ def process_frame(jpeg_bytes):
 
     if len(results[0].boxes) == 0:
         if MODE == "attendance":
-            MESSAGE = "Taking Attendance... No face detected"
+            MESSAGE = "No face detected"
         elif MODE == "register":
-            MESSAGE = "Waiting for face — look at the camera"
-        else:
-            MESSAGE = "Waiting..."
+            MESSAGE = "Look at the camera"
         recent_predictions.clear()
 
     for box in results[0].boxes:
         x1, y1, x2, y2 = map(int, box.xyxy[0])
-        if (x2 - x1) < 80 or (y2 - y1) < 80:
+        if (x2 - x1) < 60 or (y2 - y1) < 60:
             continue
 
         face = gray[y1:y2, x1:x2]
@@ -248,26 +244,26 @@ def process_frame(jpeg_bytes):
         active_faces.add(face_id)
         display_name = ""
 
-        # Registration mode
+        # Registration mode (locked to prevent race conditions)
         if MODE == "register":
-            if COUNT < 10:
-                os.makedirs(os.path.join(DATASET_DIR, STUDENT_NAME), exist_ok=True)
-                COUNT += 1
-                face_save = cv2.resize(face, (200, 200))
-                cv2.imwrite(
-                    os.path.join(DATASET_DIR, STUDENT_NAME, f"{COUNT}.jpg"), face_save
-                )
-                MESSAGE = f"Capturing {STUDENT_NAME}: {COUNT}/10 — Hold still"
-            elif COUNT == 10:
-                MESSAGE = f"Training model for {STUDENT_NAME}... Please wait"
-                threading.Thread(target=train_model, daemon=True).start()
-                COUNT = 11
-            # COUNT > 10 means training in progress or done — MESSAGE is set by train_model()
+            with _register_lock:
+                if COUNT < 10:
+                    os.makedirs(os.path.join(DATASET_DIR, STUDENT_NAME), exist_ok=True)
+                    COUNT += 1
+                    face_save = cv2.resize(face, (200, 200))
+                    cv2.imwrite(
+                        os.path.join(DATASET_DIR, STUDENT_NAME, f"{COUNT}.jpg"), face_save
+                    )
+                    MESSAGE = f"Capturing {COUNT}/10"
+                elif COUNT == 10:
+                    MESSAGE = "Training..."
+                    threading.Thread(target=train_model, daemon=True).start()
+                    COUNT = 11
 
         # Attendance mode
         if MODE == "attendance":
             if not recognizer:
-                MESSAGE = "No trained model — register faces first"
+                MESSAGE = "No trained model"
             else:
                 face_resized = cv2.resize(face, (200, 200))
                 label, conf = recognizer.predict(face_resized)
@@ -279,13 +275,13 @@ def process_frame(jpeg_bytes):
                     if common and common[0][1] >= 7:
                         display_name = common[0][0]
                         mark_present_once(display_name)
-                        MESSAGE = f"Marked: {display_name} Present"
+                        MESSAGE = f"{display_name} — Present"
                     else:
                         display_name = "Verifying..."
-                        MESSAGE = "Recognizing face..."
+                        MESSAGE = "Recognizing..."
                 else:
                     display_name = "Unknown"
-                    MESSAGE = "Face not recognized"
+                    MESSAGE = "Unknown face"
 
         cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
         if display_name:

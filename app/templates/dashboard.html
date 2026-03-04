@@ -8,25 +8,22 @@
     overflow: hidden;
     background: #111;
     position: relative;
-    will-change: contents;
-    transform: translateZ(0);
   }
-  .camera-box canvas,
-  .camera-box img {
+  .camera-box video {
     width: 100%;
-    border-radius: 15px;
     display: block;
+    border-radius: 15px;
     aspect-ratio: 4/3;
     object-fit: cover;
   }
-  #localPreview {
-    position: absolute; top: 0; left: 0;
-    width: 100%; height: 100%;
-    object-fit: cover; z-index: 1;
-    border-radius: 15px;
-  }
   #processedFeed {
-    position: relative; z-index: 2;
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    border-radius: 15px;
+    z-index: 2;
+    display: none;
   }
   .cam-buttons {
     margin-top: 25px;
@@ -68,36 +65,31 @@
     <h2>Camera Dashboard</h2>
 
     <div class="camera-box">
-      <!-- Hidden video element — source for frame capture -->
-      <video id="webcam" autoplay playsinline muted style="display:none"></video>
-      <!-- Local mirror shown until server starts returning frames -->
-      <canvas id="localPreview"></canvas>
-      <!-- Annotated frame returned by /api/frame -->
-      <img id="processedFeed" alt="Processed feed" style="display:none">
+      <video id="webcam" autoplay playsinline muted></video>
+      <img id="processedFeed" alt="">
     </div>
 
-    <div id="statusBar">Initialising camera...</div>
+    <div id="statusBar"></div>
 
     {% if request.args.get('mode') != 'register' %}
     <div class="cam-buttons">
       <button class="btn btn-green" id="btnAttendance" onclick="startAttendance()">Take Attendance</button>
-      <button class="btn-switch" onclick="switchCamera()">🔄 Switch Camera</button>
+      <button class="btn-switch" onclick="switchCamera()">Switch Camera</button>
       <button class="btn btn-red" onclick="endAttendance()">End Attendance</button>
     </div>
     {% else %}
     <div class="cam-buttons">
-      <button class="btn-switch" onclick="switchCamera()">🔄 Switch Camera</button>
+      <button class="btn-switch" onclick="switchCamera()">Switch Camera</button>
     </div>
     {% endif %}
 
     {% if request.args.get('mode') == 'register' %}
     <div style="margin-top:30px">
-      <h3 style="margin-bottom:10px">Enter Student Name</h3>
+      <h3 style="margin-bottom:10px">Student Name</h3>
       <input type="text" id="studentName" placeholder="Enter student name"
              style="padding:12px;width:60%;border-radius:8px;border:1px solid #ccc;font-size:16px">
       <br>
-      <button onclick="registerFace()" class="btn btn-success" style="margin-top:15px">📷 Register Face</button>
-      <p id="registerStatus" style="margin-top:12px;color:green;font-weight:bold"></p>
+      <button onclick="registerFace()" id="btnRegister" class="btn btn-success" style="margin-top:15px">Register Face</button>
     </div>
     {% endif %}
   </div>
@@ -106,58 +98,34 @@
 
 {% block scripts %}
 <script>
-// ── Elements ───────────────────────────────────────────────────
-const video       = document.getElementById("webcam");
-const localCanvas = document.getElementById("localPreview");
-const localCtx    = localCanvas.getContext("2d");
-const processed   = document.getElementById("processedFeed");
-const statusBar   = document.getElementById("statusBar");
+const video     = document.getElementById("webcam");
+const processed = document.getElementById("processedFeed");
+const statusBar = document.getElementById("statusBar");
 
-let streaming = false;     // whether we're sending frames to server
-let sendLoop  = null;      // interval id
-let isSending = false;     // guard against overlapping fetches
+let streaming = false;
 let currentStream = null;
 let useFrontCamera = true;
 
 const MAX_SEND_DIM = 480;
-const SEND_INTERVAL = 300; // ~3 fps — balanced latency vs server load
+const FRAME_DELAY  = 150;   // ms between sequential sends
 
-// ── Start / switch camera ──────────────────────────────────────
-async function startCamera(facingMode) {
-  if (currentStream) {
-    currentStream.getTracks().forEach(t => t.stop());
-  }
-  const constraints = {
-    video: {
-      facingMode: facingMode || "user",
-      width:  { ideal: 640 },
-      height: { ideal: 480 }
-    },
-    audio: false
-  };
+// Off-screen canvas reused for JPEG capture
+const _cap = document.createElement("canvas");
+const _capCtx = _cap.getContext("2d");
+
+// ── Camera start / switch ──────────────────────────────────────
+async function startCamera(facing) {
+  if (currentStream) currentStream.getTracks().forEach(t => t.stop());
+  const tryGet = (constraints) => navigator.mediaDevices.getUserMedia(constraints);
   try {
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    const stream = await tryGet({
+      video: { facingMode: facing || "user", width: { ideal: 640 }, height: { ideal: 480 } },
+      audio: false
+    }).catch(() => tryGet({ video: true, audio: false }));
     video.srcObject = stream;
     currentStream = stream;
-    await video.play();
-    localCanvas.width  = video.videoWidth  || 640;
-    localCanvas.height = video.videoHeight || 480;
-    statusBar.textContent = "Camera ready";
-    drawLocalPreview();
-  } catch (err) {
-    try {
-      const fallback = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-      video.srcObject = fallback;
-      currentStream = fallback;
-      await video.play();
-      localCanvas.width  = video.videoWidth  || 640;
-      localCanvas.height = video.videoHeight || 480;
-      statusBar.textContent = "Camera ready";
-      drawLocalPreview();
-    } catch (e) {
-      console.error("Camera error:", e);
-      statusBar.textContent = "⚠️ Camera access denied or unavailable";
-    }
+  } catch (e) {
+    statusBar.textContent = "Camera access denied";
   }
 }
 
@@ -167,101 +135,92 @@ function switchCamera() {
 }
 window.switchCamera = switchCamera;
 
-// ── Draw local mirror (so user always see themselves) ──────────
-function drawLocalPreview() {
-  if (!video.videoWidth) { requestAnimationFrame(drawLocalPreview); return; }
-  localCtx.drawImage(video, 0, 0, localCanvas.width, localCanvas.height);
-  if (!streaming) {
-    // When not streaming, keep updating the local mirror
-    requestAnimationFrame(drawLocalPreview);
-  }
-}
-
-// ── Capture one JPEG from the video element ────────────────────
+// ── Capture JPEG blob from video ───────────────────────────────
 function captureJPEG() {
-  const w = video.videoWidth  || 640;
-  const h = video.videoHeight || 480;
-
-  // Scale down to save bandwidth
-  let sw = w, sh = h;
-  if (sw > MAX_SEND_DIM || sh > MAX_SEND_DIM) {
-    const scale = MAX_SEND_DIM / Math.max(sw, sh);
-    sw = Math.round(sw * scale);
-    sh = Math.round(sh * scale);
-  }
-
-  const c = document.createElement("canvas");
-  c.width = sw; c.height = sh;
-  c.getContext("2d").drawImage(video, 0, 0, sw, sh);
-
-  return new Promise(resolve => {
-    c.toBlob(blob => resolve(blob), "image/jpeg", 0.60);
-  });
+  const w = video.videoWidth, h = video.videoHeight;
+  if (!w) return Promise.resolve(null);
+  const scale = Math.max(w, h) > MAX_SEND_DIM ? MAX_SEND_DIM / Math.max(w, h) : 1;
+  const sw = Math.round(w * scale), sh = Math.round(h * scale);
+  _cap.width = sw; _cap.height = sh;
+  _capCtx.drawImage(video, 0, 0, sw, sh);
+  return new Promise(r => _cap.toBlob(b => r(b), "image/jpeg", 0.65));
 }
 
-// ── Send frame to server, display annotated result ─────────────
-async function sendFrame() {
-  if (isSending || !video.videoWidth) return;
-  isSending = true;
-  try {
-    const blob = await captureJPEG();
-    if (!blob) { isSending = false; return; }
-
-    const fd = new FormData();
-    fd.append("frame", blob, "frame.jpg");
-
-    const resp = await fetch("/api/frame", { method: "POST", body: fd });
-
-    if (resp.ok) {
-      const annotated = await resp.blob();
-      const url = URL.createObjectURL(annotated);
-      processed.onload = () => URL.revokeObjectURL(url);
-      processed.src = url;
-      processed.style.display = "block";
-      localCanvas.style.display = "none";
-
-      const msg = resp.headers.get("X-Message");
-      if (msg) statusBar.textContent = msg;
+// ── Sequential frame send loop ─────────────────────────────────
+async function frameSendLoop() {
+  while (streaming) {
+    if (video.videoWidth) {
+      try {
+        const blob = await captureJPEG();
+        if (blob) {
+          const fd = new FormData();
+          fd.append("frame", blob, "frame.jpg");
+          const resp = await fetch("/api/frame", { method: "POST", body: fd });
+          if (resp.ok) {
+            const img = await resp.blob();
+            const url = URL.createObjectURL(img);
+            processed.onload = () => URL.revokeObjectURL(url);
+            processed.src = url;
+            processed.style.display = "block";
+            const msg = resp.headers.get("X-Message");
+            if (msg) statusBar.textContent = msg;
+          }
+        }
+      } catch (_) {}
     }
-  } catch (e) {
-    console.error("Frame send error:", e);
+    await new Promise(r => setTimeout(r, FRAME_DELAY));
   }
-  isSending = false;
+  processed.style.display = "none";
 }
 
-// ── Start / stop the frame send loop ───────────────────────────
 function startSending() {
   if (streaming) return;
   streaming = true;
-  localCanvas.style.display = "block";
-  processed.style.display = "none";
-  sendLoop = setInterval(sendFrame, SEND_INTERVAL);
+  frameSendLoop();
 }
 
 function stopSending() {
   streaming = false;
-  if (sendLoop) { clearInterval(sendLoop); sendLoop = null; }
-  // Show local preview again
-  localCanvas.style.display = "block";
-  processed.style.display = "none";
-  drawLocalPreview();
 }
 
-// ── Poll status (training progress, mode changes) ──────────────
+// ── Page mode ──────────────────────────────────────────────────
+const PAGE_MODE = new URLSearchParams(location.search).get("mode") || "attendance";
+let attendanceActive = false;  // only show status after user clicks Take Attendance
+
+// ── Poll status ────────────────────────────────────────────────
+let _lastMode = "";
 async function pollStatus() {
   try {
-    const resp = await fetch("/api/status");
-    const data = await resp.json();
-    if (data.message) statusBar.textContent = data.message;
-    // If mode went idle while streaming (e.g. training finished), keep
-    // streaming a bit so user sees the "Registration Complete" message
+    const r = await fetch("/api/status");
+    const d = await r.json();
+
+    // On registration page: show messages only during registration
+    if (PAGE_MODE === "register") {
+      if (d.mode === "register" || _lastMode === "register") {
+        if (d.message) statusBar.textContent = d.message;
+      }
+      // Auto-stop when registration completes
+      if (_lastMode === "register" && d.mode === "idle") {
+        setTimeout(() => {
+          stopSending();
+          const btn = document.getElementById("btnRegister");
+          if (btn) { btn.disabled = false; btn.innerText = "Register Face"; }
+        }, 1500);
+      }
+    } else {
+      // On attendance page: only show messages after user started attendance
+      if (attendanceActive && d.message) statusBar.textContent = d.message;
+    }
+
+    _lastMode = d.mode;
   } catch (_) {}
 }
 setInterval(pollStatus, 2000);
 
-// ── Control buttons ────────────────────────────────────────────
+// ── Controls ───────────────────────────────────────────────────
 function startAttendance() {
   fetch("/start_attendance").then(() => {
+    attendanceActive = true;
     const btn = document.getElementById("btnAttendance");
     if (btn) { btn.innerText = "Attendance Running..."; btn.disabled = true; }
     startSending();
@@ -270,20 +229,21 @@ function startAttendance() {
 
 function endAttendance() {
   fetch("/stop_attendance").then(() => {
+    attendanceActive = false;
     const btn = document.getElementById("btnAttendance");
     if (btn) { btn.innerText = "Take Attendance"; btn.disabled = false; }
     stopSending();
-    statusBar.textContent = "Attendance Ended";
+    statusBar.textContent = "";
   });
 }
 
 async function registerFace() {
   const name = document.getElementById("studentName")?.value.trim();
-  if (!name) { alert("Please enter a student name."); return; }
+  if (!name) { alert("Enter a student name."); return; }
+  const btn = document.getElementById("btnRegister");
+  if (btn) { btn.disabled = true; btn.innerText = "Capturing..."; }
   const fd = new FormData(); fd.append("name", name);
   await fetch("/register", { method: "POST", body: fd });
-  const s = document.getElementById("registerStatus");
-  if (s) { s.innerText = `${name} — Hold Still!`; setTimeout(() => s.innerText = "", 5000); }
   startSending();
 }
 
@@ -291,7 +251,7 @@ async function registerFace() {
 const prefilled = new URLSearchParams(location.search).get("name");
 if (prefilled) { const el = document.getElementById("studentName"); if (el) el.value = prefilled; }
 
-// ── Init camera on page load ───────────────────────────────────
+// ── Init ───────────────────────────────────────────────────────
 startCamera("user");
 </script>
 {% endblock %}
