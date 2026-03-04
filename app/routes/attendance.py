@@ -103,6 +103,8 @@ def register():
 def start_attendance():
     camera.MODE = "attendance"
     camera.ATTENDANCE_START_TIME = datetime.now()
+    camera._marked_today.clear()
+    camera.recent_predictions.clear()
 
     try:
         today = date_cls.today().isoformat()
@@ -130,5 +132,7 @@ def stop_attendance():
     camera.mark_absent_remaining(camera.ATTENDANCE_TYPE)
     camera.SESSION_END_TIME = None
     camera.ATTENDANCE_TYPE = "normal"
+    camera._marked_today.clear()
+    camera.recent_predictions.clear()
     camera.MESSAGE = ""
     return ("", 204)

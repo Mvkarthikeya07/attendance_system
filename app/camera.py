@@ -44,6 +44,7 @@ ATTENDANCE_START_TIME = None
 SESSION_END_TIME = None
 
 recent_predictions: dict = defaultdict(list)
+_marked_today: set = set()   # in-memory cache of students marked today
 
 # ── Load existing recogniser if available ───────────────────────────
 recognizer = None
@@ -143,6 +144,11 @@ def calculate_late_minutes(now):
 
 
 def mark_present_once(name):
+    """Mark student present. Returns True if a new mark was made."""
+    global _marked_today
+    if name in _marked_today:
+        return False
+
     today = date.today().isoformat()
     now = datetime.now()
     now_time = now.strftime("%H:%M:%S")
@@ -152,6 +158,7 @@ def mark_present_once(name):
     cur.execute("SELECT status FROM attendance WHERE name=%s AND date=%s", (name, today))
     row = cur.fetchone()
 
+    marked = False
     if row is None:
         status = "LATE" if ATTENDANCE_TYPE == "late" else "PRESENT"
         late_min = calculate_late_minutes(now) if ATTENDANCE_TYPE == "late" else 0
@@ -160,10 +167,8 @@ def mark_present_once(name):
             (name, today, now_time, status, late_min),
         )
         conn.commit()
-        conn.close()
-        return
-
-    if row[0] == "ABSENT":
+        marked = True
+    elif row[0] == "ABSENT":
         status = "LATE" if ATTENDANCE_TYPE == "late" else "PRESENT"
         late_min = calculate_late_minutes(now) if ATTENDANCE_TYPE == "late" else 0
         cur.execute(
@@ -171,8 +176,44 @@ def mark_present_once(name):
             (now_time, status, late_min, name, today),
         )
         conn.commit()
-
+        marked = True
     conn.close()
+
+    if marked or row is not None:
+        _marked_today.add(name)
+    return marked
+
+
+def _check_all_marked():
+    """Return True if every registered student has been marked present/late today."""
+    today = date.today().isoformat()
+    registered = [d for d in os.listdir(DATASET_DIR)
+                  if os.path.isdir(os.path.join(DATASET_DIR, d))]
+    if not registered:
+        return False
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT COUNT(DISTINCT name) FROM attendance WHERE date=%s AND status IN ('PRESENT','LATE')",
+        (today,)
+    )
+    marked = cur.fetchone()[0]
+    conn.close()
+    return marked >= len(registered)
+
+
+def _auto_stop_attendance():
+    """Background thread: mark absent + auto-stop if all marked."""
+    global MODE, SESSION_END_TIME, ATTENDANCE_TYPE, MESSAGE
+    try:
+        if _check_all_marked():
+            mark_absent_remaining(ATTENDANCE_TYPE)
+            SESSION_END_TIME = None
+            ATTENDANCE_TYPE = "normal"
+            MODE = "idle"
+            MESSAGE = "All students marked"
+    except Exception:
+        pass
 
 
 def mark_absent_remaining(attendance_type="normal"):
@@ -207,7 +248,7 @@ def process_frame(jpeg_bytes):
     Runs YOLO face detection + LBPH recognition on the frame and returns
     the annotated JPEG bytes and a status message string.
     """
-    global COUNT, MESSAGE, recent_predictions, ATTENDANCE_START_TIME
+    global COUNT, MESSAGE, recent_predictions, ATTENDANCE_START_TIME, MODE, SESSION_END_TIME, ATTENDANCE_TYPE
 
     # Decode JPEG into OpenCV image
     arr = np.frombuffer(jpeg_bytes, dtype=np.uint8)
@@ -221,7 +262,7 @@ def process_frame(jpeg_bytes):
         ATTENDANCE_START_TIME = None
 
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    results = yolo_model(frame, conf=0.5, imgsz=320, verbose=False)
+    results = yolo_model(frame, conf=0.45, imgsz=320, verbose=False)
     active_faces = set()
 
     if len(results[0].boxes) == 0:
@@ -240,7 +281,7 @@ def process_frame(jpeg_bytes):
         if face.size == 0:
             continue
 
-        face_id = f"{x1 // 50}_{y1 // 50}"
+        face_id = f"{x1 // 30}_{y1 // 30}"
         active_faces.add(face_id)
         display_name = ""
 
@@ -267,21 +308,30 @@ def process_frame(jpeg_bytes):
             else:
                 face_resized = cv2.resize(face, (200, 200))
                 label, conf = recognizer.predict(face_resized)
-                if conf <= 80 and label in label_map:
-                    recent_predictions[face_id].append(label_map[label])
-                    if len(recent_predictions[face_id]) > 10:
-                        recent_predictions[face_id].pop(0)
-                    common = Counter(recent_predictions[face_id]).most_common(1)
-                    if common and common[0][1] >= 7:
+                if conf <= 65 and label in label_map:
+                    pred_name = label_map[label]
+                    recent_predictions[face_id].append(pred_name)
+                    preds = recent_predictions[face_id]
+                    if len(preds) > 5:
+                        recent_predictions[face_id] = preds[-5:]
+                        preds = recent_predictions[face_id]
+                    # Require 4 out of last 5 to be the same person
+                    common = Counter(preds).most_common(1)
+                    if len(preds) >= 5 and common[0][1] >= 4:
                         display_name = common[0][0]
-                        mark_present_once(display_name)
-                        MESSAGE = f"{display_name} — Present"
+                        if display_name in _marked_today:
+                            MESSAGE = f"{display_name} — Already marked"
+                        else:
+                            newly_marked = mark_present_once(display_name)
+                            MESSAGE = f"{display_name} — Present"
+                            if newly_marked:
+                                recent_predictions[face_id] = []
+                                threading.Thread(target=_auto_stop_attendance, daemon=True).start()
                     else:
                         display_name = "Verifying..."
-                        MESSAGE = "Recognizing..."
                 else:
-                    display_name = "Unknown"
-                    MESSAGE = "Unknown face"
+                    display_name = ""
+                    recent_predictions[face_id] = []
 
         cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
         if display_name:
