@@ -276,24 +276,53 @@ def process_frame(jpeg_bytes):
     active_faces = set()
     faces_out = []
 
-    if len(results[0].boxes) == 0:
+    # Collect detected face boxes first
+    detected_boxes = []
+    for box in results[0].boxes:
+        x1, y1, x2, y2 = map(int, box.xyxy[0])
+        if (x2 - x1) < 60 or (y2 - y1) < 60:
+            continue
+        face = gray[y1:y2, x1:x2]
+        if face.size == 0:
+            continue
+        cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
+        detected_boxes.append((x1, y1, x2, y2, cx, cy, face))
+
+    if not detected_boxes:
         if MODE == "attendance":
             MESSAGE = "No face detected"
         elif MODE == "register":
             MESSAGE = "Look at the camera"
         recent_predictions.clear()
 
-    for box in results[0].boxes:
-        x1, y1, x2, y2 = map(int, box.xyxy[0])
-        if (x2 - x1) < 60 or (y2 - y1) < 60:
-            continue
+    # Match each detection to nearest existing tracked face or create new track
+    _used_ids = set()
+    for (x1, y1, x2, y2, cx, cy, face) in detected_boxes:
+        # Find closest existing tracked face
+        best_id = None
+        best_dist = 9999
+        for fid in recent_predictions:
+            if fid in _used_ids:
+                continue
+            parts = fid.split("_")
+            fx, fy = int(parts[0]), int(parts[1])
+            dist = abs(cx - fx) + abs(cy - fy)
+            if dist < best_dist:
+                best_dist = dist
+                best_id = fid
+        # If close enough, reuse; otherwise create new
+        if best_id and best_dist < 120:
+            face_id = best_id
+        else:
+            face_id = f"{cx}_{cy}"
+        # Update face_id center to current position
+        new_id = f"{cx}_{cy}"
+        if face_id != new_id and face_id in recent_predictions:
+            recent_predictions[new_id] = recent_predictions.pop(face_id)
+            face_id = new_id
 
-        face = gray[y1:y2, x1:x2]
-        if face.size == 0:
-            continue
-
-        face_id = f"{x1 // 30}_{y1 // 30}"
         active_faces.add(face_id)
+        _used_ids.add(face_id)
         display_name = ""
 
         # Registration mode
@@ -320,7 +349,7 @@ def process_frame(jpeg_bytes):
             else:
                 face_resized = cv2.resize(face, (200, 200))
                 label, conf = recognizer.predict(face_resized)
-                if conf <= 50 and label in label_map:
+                if conf <= 80 and label in label_map:
                     pred_name = label_map[label]
                 else:
                     pred_name = "_unknown_"
@@ -332,7 +361,7 @@ def process_frame(jpeg_bytes):
                     preds = recent_predictions[face_id]
 
                 common = Counter(preds).most_common(1)
-                if len(preds) >= 5 and common[0][1] >= 4:
+                if len(preds) >= 5 and common[0][1] >= 7:
                     top_name = common[0][0]
                     if top_name == "_unknown_":
                         display_name = "Unknown"
