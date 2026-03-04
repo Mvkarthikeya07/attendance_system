@@ -320,16 +320,24 @@ def process_frame(jpeg_bytes):
             else:
                 face_resized = cv2.resize(face, (200, 200))
                 label, conf = recognizer.predict(face_resized)
-                if conf <= 65 and label in label_map:
+                if conf <= 50 and label in label_map:
                     pred_name = label_map[label]
-                    recent_predictions[face_id].append(pred_name)
+                else:
+                    pred_name = "_unknown_"
+
+                recent_predictions[face_id].append(pred_name)
+                preds = recent_predictions[face_id]
+                if len(preds) > 7:
+                    recent_predictions[face_id] = preds[-7:]
                     preds = recent_predictions[face_id]
-                    if len(preds) > 5:
-                        recent_predictions[face_id] = preds[-5:]
-                        preds = recent_predictions[face_id]
-                    common = Counter(preds).most_common(1)
-                    if len(preds) >= 5 and common[0][1] >= 4:
-                        display_name = common[0][0]
+
+                common = Counter(preds).most_common(1)
+                if len(preds) >= 5 and common[0][1] >= 4:
+                    top_name = common[0][0]
+                    if top_name == "_unknown_":
+                        display_name = "Unknown"
+                    else:
+                        display_name = top_name
                         if display_name in _marked_today:
                             MESSAGE = f"{display_name} — Already marked"
                         else:
@@ -341,11 +349,8 @@ def process_frame(jpeg_bytes):
                                 args=(display_name,),
                                 daemon=True
                             ).start()
-                    else:
-                        display_name = "Verifying..."
                 else:
-                    display_name = ""
-                    recent_predictions[face_id] = []
+                    display_name = "Verifying..."
 
         # Normalise box coords to 0-1 range so client can scale to its video size
         faces_out.append({
