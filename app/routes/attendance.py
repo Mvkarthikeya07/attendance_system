@@ -5,9 +5,7 @@ Attendance routes — camera dashboard, frame processing, controls.
 from functools import wraps
 from datetime import datetime, date as date_cls
 
-import numpy as np
-import cv2
-from flask import Blueprint, render_template, request, redirect, session, jsonify, Response
+from flask import Blueprint, render_template, request, redirect, session, jsonify
 
 from app import auth, camera
 
@@ -60,15 +58,11 @@ def api_frame():
     if not jpeg_bytes:
         return jsonify({"error": "No frame data"}), 400
 
-    annotated, message = camera.process_frame(jpeg_bytes)
-    if annotated is None:
+    faces, message = camera.process_frame(jpeg_bytes)
+    if faces is None:
         return jsonify({"error": message}), 400
 
-    return Response(
-        annotated,
-        mimetype="image/jpeg",
-        headers={"X-Message": message},
-    )
+    return jsonify({"faces": faces, "message": message})
 
 
 # ── Status endpoint (polled by JS for mode/message updates) ────────

@@ -16,14 +16,12 @@
     aspect-ratio: 4/3;
     object-fit: cover;
   }
-  #processedFeed {
+  #overlay {
     position: absolute;
     top: 0; left: 0;
     width: 100%; height: 100%;
-    object-fit: cover;
-    border-radius: 15px;
+    pointer-events: none;
     z-index: 2;
-    display: none;
   }
   .cam-buttons {
     margin-top: 25px;
@@ -66,7 +64,7 @@
 
     <div class="camera-box">
       <video id="webcam" autoplay playsinline muted></video>
-      <img id="processedFeed" alt="">
+      <canvas id="overlay"></canvas>
     </div>
 
     <div id="statusBar"></div>
@@ -99,20 +97,21 @@
 {% block scripts %}
 <script>
 const video     = document.getElementById("webcam");
-const processed = document.getElementById("processedFeed");
+const overlay   = document.getElementById("overlay");
+const overlayCtx = overlay.getContext("2d");
 const statusBar = document.getElementById("statusBar");
 
 let streaming = false;
 let currentStream = null;
 let useFrontCamera = true;
+let currentFaces = [];  // latest face boxes from server
 
 const PAGE_MODE = new URLSearchParams(location.search).get("mode") || "attendance";
 let attendanceActive = false;
 
 const MAX_SEND_DIM = 480;
-const FRAME_DELAY  = PAGE_MODE === "register" ? 150 : 300;
+const FRAME_DELAY  = 200;
 
-// Off-screen canvas reused for JPEG capture
 const _cap = document.createElement("canvas");
 const _capCtx = _cap.getContext("2d");
 
@@ -149,6 +148,33 @@ function captureJPEG() {
   return new Promise(r => _cap.toBlob(b => r(b), "image/jpeg", 0.65));
 }
 
+// ── Draw bounding boxes on canvas overlay ──────────────────────
+function drawOverlay() {
+  const w = video.clientWidth, h = video.clientHeight;
+  if (overlay.width !== w || overlay.height !== h) {
+    overlay.width = w; overlay.height = h;
+  }
+  overlayCtx.clearRect(0, 0, w, h);
+
+  for (const f of currentFaces) {
+    const bx = f.x1 * w, by = f.y1 * h;
+    const bw = (f.x2 - f.x1) * w, bh = (f.y2 - f.y1) * h;
+
+    overlayCtx.strokeStyle = "#00ff00";
+    overlayCtx.lineWidth = 2.5;
+    overlayCtx.strokeRect(bx, by, bw, bh);
+
+    if (f.name) {
+      const fontSize = Math.max(14, Math.min(20, bw / 8));
+      overlayCtx.font = `bold ${fontSize}px sans-serif`;
+      overlayCtx.fillStyle = "#00ff00";
+      overlayCtx.fillText(f.name, bx + 4, by - 6);
+    }
+  }
+  requestAnimationFrame(drawOverlay);
+}
+requestAnimationFrame(drawOverlay);
+
 // ── Sequential frame send loop ─────────────────────────────────
 async function frameSendLoop() {
   while (streaming) {
@@ -160,20 +186,16 @@ async function frameSendLoop() {
           fd.append("frame", blob, "frame.jpg");
           const resp = await fetch("/api/frame", { method: "POST", body: fd });
           if (resp.ok) {
-            const img = await resp.blob();
-            const url = URL.createObjectURL(img);
-            processed.onload = () => URL.revokeObjectURL(url);
-            processed.src = url;
-            processed.style.display = "block";
-            const msg = resp.headers.get("X-Message");
-            if (msg) statusBar.textContent = msg;
+            const data = await resp.json();
+            currentFaces = data.faces || [];
+            if (data.message) statusBar.textContent = data.message;
           }
         }
       } catch (_) {}
     }
     await new Promise(r => setTimeout(r, FRAME_DELAY));
   }
-  processed.style.display = "none";
+  currentFaces = [];
 }
 
 function startSending() {

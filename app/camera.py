@@ -211,7 +211,16 @@ def _auto_stop_attendance():
             SESSION_END_TIME = None
             ATTENDANCE_TYPE = "normal"
             MODE = "idle"
-            MESSAGE = "All students marked"
+            MESSAGE = ""
+    except Exception:
+        pass
+
+
+def _bg_mark_and_check(name):
+    """Background thread: write DB mark then check if all done."""
+    try:
+        mark_present_once(name)
+        _auto_stop_attendance()
     except Exception:
         pass
 
@@ -242,19 +251,20 @@ def mark_absent_remaining(attendance_type="normal"):
 
 def process_frame(jpeg_bytes):
     """
-    Receive raw JPEG bytes (from the browser webcam), run YOLO face
-    detection + LBPH recognition, and return (annotated_jpeg_bytes, message).
+    Receive raw JPEG bytes from the browser webcam, run YOLO face
+    detection + LBPH recognition.
 
-    Runs YOLO face detection + LBPH recognition on the frame and returns
-    the annotated JPEG bytes and a status message string.
+    Returns (faces_list, message) where faces_list is a list of dicts:
+      [{"x1": int, "y1": int, "x2": int, "y2": int, "name": str}, ...]
     """
     global COUNT, MESSAGE, recent_predictions, ATTENDANCE_START_TIME, MODE, SESSION_END_TIME, ATTENDANCE_TYPE
 
-    # Decode JPEG into OpenCV image
     arr = np.frombuffer(jpeg_bytes, dtype=np.uint8)
     frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
     if frame is None:
         return None, "Invalid frame"
+
+    h_frame, w_frame = frame.shape[:2]
 
     if MODE == "attendance" and ATTENDANCE_START_TIME is None:
         ATTENDANCE_START_TIME = datetime.now()
@@ -264,6 +274,7 @@ def process_frame(jpeg_bytes):
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     results = yolo_model(frame, conf=0.45, imgsz=320, verbose=False)
     active_faces = set()
+    faces_out = []
 
     if len(results[0].boxes) == 0:
         if MODE == "attendance":
@@ -285,7 +296,7 @@ def process_frame(jpeg_bytes):
         active_faces.add(face_id)
         display_name = ""
 
-        # Registration mode (locked to prevent race conditions)
+        # Registration mode
         if MODE == "register":
             with _register_lock:
                 if COUNT < 10:
@@ -300,6 +311,7 @@ def process_frame(jpeg_bytes):
                     MESSAGE = "Training..."
                     threading.Thread(target=train_model, daemon=True).start()
                     COUNT = 11
+            display_name = STUDENT_NAME if COUNT <= 11 else ""
 
         # Attendance mode
         if MODE == "attendance":
@@ -315,36 +327,38 @@ def process_frame(jpeg_bytes):
                     if len(preds) > 5:
                         recent_predictions[face_id] = preds[-5:]
                         preds = recent_predictions[face_id]
-                    # Require 4 out of last 5 to be the same person
                     common = Counter(preds).most_common(1)
                     if len(preds) >= 5 and common[0][1] >= 4:
                         display_name = common[0][0]
                         if display_name in _marked_today:
                             MESSAGE = f"{display_name} — Already marked"
                         else:
-                            newly_marked = mark_present_once(display_name)
+                            _marked_today.add(display_name)
                             MESSAGE = f"{display_name} — Present"
-                            if newly_marked:
-                                recent_predictions[face_id] = []
-                                threading.Thread(target=_auto_stop_attendance, daemon=True).start()
+                            recent_predictions[face_id] = []
+                            threading.Thread(
+                                target=_bg_mark_and_check,
+                                args=(display_name,),
+                                daemon=True
+                            ).start()
                     else:
                         display_name = "Verifying..."
                 else:
                     display_name = ""
                     recent_predictions[face_id] = []
 
-        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-        if display_name:
-            cv2.putText(frame, display_name, (x1, y1 - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+        # Normalise box coords to 0-1 range so client can scale to its video size
+        faces_out.append({
+            "x1": round(x1 / w_frame, 4),
+            "y1": round(y1 / h_frame, 4),
+            "x2": round(x2 / w_frame, 4),
+            "y2": round(y2 / h_frame, 4),
+            "name": display_name,
+        })
 
     # Remove stale predictions
     for fid in list(recent_predictions.keys()):
         if fid not in active_faces:
             del recent_predictions[fid]
 
-    cv2.putText(frame, MESSAGE, (20, 40),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
-
-    _, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
-    return buffer.tobytes(), MESSAGE
+    return faces_out, MESSAGE
